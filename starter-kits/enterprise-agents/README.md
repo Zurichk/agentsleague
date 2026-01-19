@@ -35,6 +35,8 @@ If you like, take inspiration from the following real-world enterprise scenarios
 
 - **Sales Enablement Agent**: Develop an agent that provides sales teams with real-time access to product information, competitive intelligence, customer insights, or sales playbooks. The agent could help prepare for meetings and track deal progress.
 
+- **Insurance Claims Processing Agent**: Build an agent that helps insurance adjusters and claims processors manage property damage claims efficiently. The agent assists with tracking claim status, estimating repair costs, coordinating contractor assignments, and prioritizing emergency response cases.
+
 Feel free to combine multiple scenarios or create entirely new use cases that address specific challenges within your organization or industry.
 
 ---
@@ -184,13 +186,16 @@ Access official Microsoft documentation, tutorials, and learning paths:
 
 - **Microsoft 365 Copilot Documentation**: [https://learn.microsoft.com/microsoft-365-copilot/](https://learn.microsoft.com/microsoft-365-copilot/)
 - **Copilot Studio Documentation**: [https://learn.microsoft.com/microsoft-copilot-studio/](https://learn.microsoft.com/microsoft-copilot-studio/)
+- **Declarative Agents**: [https://aka.ms/declarative-agents-docs](https://aka.ms/declarative-agents-docs)
+- **Microsoft 365 Agents Toolkit**: [https://aka.ms/m365-agents-toolkit](https://aka.ms/m365-agents-toolkit)
 - **Microsoft Entra ID Documentation**: [https://learn.microsoft.com/entra/identity/](https://learn.microsoft.com/entra/identity/)
 - **Adaptive Cards Documentation**: [https://learn.microsoft.com/adaptive-cards/](https://learn.microsoft.com/adaptive-cards/)
 - **Model Context Protocol (MCP)**: [https://learn.microsoft.com/azure/ai-services/agents/](https://learn.microsoft.com/azure/ai-services/agents/)
 
+
 ### Additional Resources
 
-- **Microsoft 365 Agents Toolkit for VS Code**: [https://learn.microsoft.com/en-us/microsoft-365/developer/overview-m365-agents-toolkit](https://learn.microsoft.com/en-us/microsoft-365/developer/overview-m365-agents-toolkit)
+- **10 MCP Servers to Get You Started**: [https://developer.microsoft.com/blog/10-microsoft-mcp-servers-to-accelerate-your-development-workflow](https://developer.microsoft.com/blog/10-microsoft-mcp-servers-to-accelerate-your-development-workflow)
 - **Microsoft Graph API**: [https://learn.microsoft.com/graph/](https://learn.microsoft.com/graph/)
 - **Microsoft 365 Developer Program**: [https://developer.microsoft.com/microsoft-365/dev-program](https://developer.microsoft.com/microsoft-365/dev-program)
 
