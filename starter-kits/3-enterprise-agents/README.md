@@ -354,4 +354,4 @@ Access official Microsoft documentation, tutorials, and learning paths:
 
 ---
 
-Questions? Join [Discord](https://aka.ms/agentsleague/discord) #enterprise-agents channel
+Questions? Join [Discord](https://aka.ms/agentsleague/discord) #agentsleague channel
