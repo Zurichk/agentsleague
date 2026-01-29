@@ -31,6 +31,16 @@ Before starting this challenge, ensure you have the following:
 > [!IMPORTANT]
 > Microsoft Foundry requires an Azure subscription. A **free trial** provides $200 credit for 30 days. Some features may incur costs after the trial. Check the [Azure pricing calculator](https://azure.microsoft.com/pricing/calculator/) to estimate costs.
 
+> [!WARNING]
+> **Free Tier Limitations:** The Azure free subscription has significant constraints that may prevent full implementation of this challenge:
+> - **Model access:** Some advanced models (e.g., GPT-4o, o1) may not be available or have very limited quotas
+> - **Rate limits:** Strict API call limits (e.g., requests per minute, tokens per day)
+> - **Region restrictions:** Free tier resources may only be available in limited regions
+> - **Feature restrictions:** Some Microsoft Foundry features (agent orchestration, evaluations) may require pay-as-you-go
+> - **Credit exhaustion:** $200 credit can be consumed quickly with heavy AI model usage
+>
+> **Recommendation:** For full functionality, consider a **pay-as-you-go** subscription or request access to [Azure for Students](https://azure.microsoft.com/free/students/) ($100 credit, no credit card required) or the [Microsoft for Startups Founders Hub](https://www.microsoft.com/startups).
+
 ### ⏱️ Time Commitment
 - **Setup**: ~1-2 hours
 - **Learning basics**: ~4-6 hours
