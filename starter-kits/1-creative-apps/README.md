@@ -316,7 +316,7 @@ Your submission **must** be a creative application that showcases innovation and
 
 ### 🏆 Evaluation Criteria
 
-Projects are evaluated by experts and product teams using this rubric:
+Projects are evaluated using this rubric, which combines scores from expert judges, product teams, and a community vote:
 
 - **Accuracy & Relevance (20%)** — Meets challenge requirements
 - **Reasoning & Multi-step Thinking (20%)** — Clear problem-solving approach
