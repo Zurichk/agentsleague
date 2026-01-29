@@ -96,7 +96,7 @@ Projects are evaluated by experts and product teams using this rubric:
 - **Creativity & Originality (15%)** — Novel ideas or unexpected execution
 - **User Experience & Presentation (15%)** — Clear, polished, demoable
 - **Reliability & Safety (20%)** — Solid patterns, avoids obvious pitfalls
-- **Community vote (10)%** via the Discord poll available at https://aka.ms/agentsleague/discord
+- **Community vote (10%)** via the Discord poll available at https://aka.ms/agentsleague/discord
 
 
 ## Prizes & Recognition
