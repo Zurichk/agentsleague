@@ -16,7 +16,7 @@
 
 **A 2-week AI developer challenge running between February 16 - 27 with live coding battles, community building, and competition.**
 
-Build innovative AI agents using GitHub Copilot, GitHub Copilot CLI or GitHub Copilot SDK for Microsoft Foundry, or M365 Agents Toolkit. Compete for recognition, network with developers globally, and get feedback from Microsoft product teams.
+Build innovative AI agents using GitHub Copilot, Copilot CLI  or Copilot CLI SDK for Microsoft Foundry, or M365 Agents Toolkit. Compete for recognition, network with developers globally, and get feedback from Microsoft product teams.
 
 ## What's Agents League?
 
@@ -27,7 +27,7 @@ A **2-week developer competition** combining:
 - **💬 Community engagement** - Discord AMAs, Show & Tell sessions, community voting
 - **🏆 Recognition** - Winners earn amazing prizes
 
-**Open to everyone** – all skill levels welcome! Watch the battles for inspiration, then build one project or compete in all three tracks and use GitHub Copilot Chat in VS Code, the GitHub Copilot CLI, or the GitHub SDK.
+**Open to everyone** – all skill levels welcome! Watch the battles for inspiration, then build one project or compete in all three tracks and use GitHub Copilot Chat in VS Code, the Copilot CLI, or the Copilot CLI SDK.
 
 ## Challenge Tracks
 
