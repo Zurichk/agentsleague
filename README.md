@@ -14,9 +14,11 @@
 
 ---
 
-**A 2-week AI developer challenge running between February 16 - 27 with live coding battles, community building, and competition.**
+**A 2-week AI developer challenge running between February 16 - 27, 2026 with live coding battles, community building, and competition.**
 
 Build innovative AI agents using GitHub Copilot, Microsoft Foundry, or M365 Agents Toolkit. Compete for recognition, network with developers globally, and get feedback from Microsoft product teams.
+
+⚠️ **Important**: Before submitting, read our [Disclaimer](./DISCLAIMER.md) - do not upload confidential information.
 
 ## What's Agents League?
 
@@ -81,7 +83,14 @@ Browse [`starter-kits/`](./starter-kits/) for setup guides and examples
 
 ### 5. Submit Your Project
 
+**Submission Deadline**: March 1, 2026 (11:59 PM PT)
+
 Open a new issue in this repo using the [project submission template](https://github.com/microsoft/agentsleague/issues/new?template=project.yml)
+
+⚠️ **Before submitting**: 
+- Read the [Disclaimer](./DISCLAIMER.md) - No confidential information allowed
+- Review the [Code of Conduct](./CODE_OF_CONDUCT.md)
+- Ensure your repository is public and includes a README
 
 ### 6. Join the Community
 
@@ -133,6 +142,13 @@ Projects are evaluated by experts and product teams using this rubric:
 - **Discord**: [Join Agents League Arena](https://aka.ms/agentsleague/discord) - Get help, share progress, vote
 - **YouTube**: [Microsoft Reactor](https://aka.ms/reactor) - Watch live battles and replays
 - **Issues**: [Report bugs](https://github.com/microsoft/agentsleague/issues) - Found a problem? Let us know
+
+### 📋 Important Policies
+
+- **[Disclaimer](./DISCLAIMER.md)** - Security and confidential information protection
+- **[Code of Conduct](./CODE_OF_CONDUCT.md)** - Community standards and expectations
+- **[Contributing Guidelines](./CONTRIBUTING.md)** - How to contribute to the project
+- **[Security Policy](./SECURITY.md)** - How to report security issues
 
 <div align="center">
 
