@@ -16,7 +16,7 @@
 
 **A 2-week AI developer challenge running between February 16 - 27, 2026 with live coding battles, community building, and competition.**
 
-Build innovative AI agents using GitHub Copilot, Microsoft Foundry, or M365 Agents Toolkit. Compete for recognition, network with developers globally, and get feedback from Microsoft product teams.
+Build innovative AI agents using GitHub Copilot, Copilot CLI or Copilot CLI SDK for Microsoft Foundry, or M365 Agents Toolkit. Compete for recognition, network with developers globally, and get feedback from Microsoft product teams.
 
 ⚠️ **Important**: Before submitting, read our [Disclaimer](./DISCLAIMER.md) - do not upload confidential information.
 
@@ -102,15 +102,12 @@ Open a new issue in this repo using the [project submission template](https://gi
 
 Projects are evaluated by experts and product teams using this rubric:
 
-- **Accuracy & Relevance (25%)** — Meets challenge requirements
-- **Reasoning & Multi-step Thinking (25%)** — Clear problem-solving approach
+- **Accuracy & Relevance (20%)** — Meets challenge requirements
+- **Reasoning & Multi-step Thinking (20%)** — Clear problem-solving approach
 - **Creativity & Originality (15%)** — Novel ideas or unexpected execution
 - **User Experience & Presentation (15%)** — Clear, polished, demoable
 - **Reliability & Safety (20%)** — Solid patterns, avoids obvious pitfalls
-
-**Bonus Points:**
-- **+10 Fan Favorite** — Community vote via Discord poll
-- **+10 Product Team Pick** — Selected by Microsoft product teams
+- **Community vote (10%)** via the Discord poll available at https://aka.ms/agentsleague/discord
 
 ## Prizes & Recognition
 
