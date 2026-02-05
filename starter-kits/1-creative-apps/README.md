@@ -108,3 +108,321 @@ Discover the user interface and key features of VS Code with the [Getting Starte
 ### Using GitHub Copilot
 
 GitHub Copilot provides powerful AI capabilities directly in VS Code. Learn more in the [Copilot Overview](https://code.visualstudio.com/docs/copilot/overview).
+
+#### Inline Suggestions
+
+Copilot provides inline code suggestions as you type, from single line completions to entire function implementations:
+
+- Type a function signature like `function calculateScore(` to get complete implementations
+- Write comments like `// Create a particle system for visual effects` to generate code
+- Begin a component with `const AnimatedCanvas = ({` to receive a complete implementation
+
+Press `Tab` to accept suggestions or `Esc` to dismiss.
+
+#### Natural Language Chat
+
+Use natural language to interact with your codebase through the Chat view (`Ctrl+Shift+I` / `Cmd+Shift+I`):
+
+- "How does this animation loop work?"
+- "What's causing the rendering issue in the draw function?"
+- "Add sound effects when the user clicks the canvas"
+- "Create a color palette generator component"
+
+Learn more about [using chat in VS Code](https://code.visualstudio.com/docs/copilot/chat/copilot-chat).
+
+#### Autonomous Coding with Agents
+
+Agents can autonomously plan and execute complex development tasks. Select **Agent** from the agent picker in the Chat view:
+
+- "Implement a generative art canvas with multiple brush styles"
+- "Create a music visualizer that responds to audio input"
+- "Build a story generator with branching narrative paths"
+
+The agent will iterate on the code, running commands and making coordinated changes across multiple files.
+
+#### Inline Chat
+
+For quick edits directly in the editor:
+
+1. Select code and press `Ctrl+I` / `Cmd+I` to open inline chat
+2. Ask Copilot to modify, refactor, or explain the selected code
+3. Review and accept or reject proposed changes
+
+
+### Understanding GitHub Copilot Modes
+
+GitHub Copilot offers distinct modes, each designed to enhance your coding workflow in unique ways. Understanding when to use each mode will help you get the most out of Copilot for your creative projects:
+
+#### Ask Mode
+
+Ask Mode is a Q&A assistant that helps you understand code, solve problems, or learn concepts. It allows you to ask questions in natural language, and Copilot responds with explanations, snippets, or suggestions. It does not directly modify any code.
+
+> **Tip**: Ask mode works best for quick clarifications, brainstorming creative solutions, and getting sample implementations for your project ideas.
+
+**Example prompts for creative apps:**
+- "How can I create a particle system effect in p5.js?"
+- "What's the best approach for generating procedural music?"
+- "Explain how color theory applies to generative art"
+
+#### Edit Mode
+
+Edit Mode enables direct code modifications based on natural language instructions. You can highlight specific code blocks or files, describe the desired changes, and Copilot will propose edits. These changes are presented as diffs for your review, ensuring you retain control over the final implementation.
+
+> **Tip**: Try Edit mode for targeted updates, such as refactoring animation code or adding error handling to your creative application.
+
+**Example prompts for creative apps:**
+- "Add easing functions to this animation"
+- "Refactor this drawing code to support multiple brush types"
+- "Add input validation to the user prompt handler"
+
+#### Agent Mode
+
+Agent Mode is the most autonomous and powerful of the modes. It allows Copilot to analyze your entire project, plan tasks, make edits, run commands, and iterate until the goal is achieved. This mode is ideal for multi-step tasks, such as building features, fixing bugs, or scaffolding new components.
+
+> **Tip**: Agent mode will carry out actions beyond just editing—it can write code, create new files, and run terminal commands. Best used for complex creative features that span multiple files.
+
+**Example prompts for creative apps:**
+- "Create a complete music visualizer component with audio analysis"
+- "Build a story generator with save/load functionality and branching paths"
+- "Implement a generative art canvas with multiple brush styles and export options"
+
+#### Plan Mode
+
+Plan Mode helps you outline your coding tasks and objectives more effectively. Copilot assists in creating a structured plan for your project, helping you break down complex creative tasks into manageable steps.
+
+> **Tip**: Use Plan Mode when starting a new creative project to set clear objectives and receive tailored suggestions for your implementation approach.
+
+**Example prompts for creative apps:**
+- "Plan the architecture for an interactive fiction engine"
+- "Help me break down building a procedural music generator"
+- "Create a roadmap for implementing a collaborative art platform"
+
+### Getting Started Checklist
+
+1. ✅ Download and install VS Code for your platform
+2. ✅ Install additional components (Git, Node.js, language runtimes)
+3. ✅ Enable AI features and sign in to GitHub Copilot
+4. ✅ Explore Copilot Chat and inline chat features
+5. ✅ Choose your creative project idea and target platform
+6. ✅ Start building and let Copilot accelerate your development!
+
+</details>
+
+---
+
+## ✨ Prompting Tips
+
+Effective prompting is key to getting the most out of GitHub Copilot for creative development. Here are tips and techniques to improve your results:
+
+<details>
+<summary>💬 Prompting Techniques & Templates (click to expand)</summary>
+
+### Use File References for Context
+
+When working with GitHub Copilot Chat, use the `#file:filename` syntax to provide specific file context:
+
+1. Type `#` in the Copilot chat window
+2. A file picker will appear automatically
+3. Select the file you want to reference
+4. Then type or paste the rest of your prompt
+
+**Example**: Instead of asking "add an animation function", ask "#file:canvas.js add a smooth easing animation function for the particle system"
+
+### Be Specific About Creative Intent
+
+Vague prompts lead to generic results. Include details about style, mood, and technical requirements:
+
+| ❌ Vague Prompt | ✅ Specific Prompt |
+|----------------|--------------------|
+| "Generate some art" | "Create a generative art function that draws flowing curves using Perlin noise with a cool color palette" |
+| "Make music" | "Generate a chord progression in C major with jazz voicings using Tone.js" |
+| "Write a story" | "Create a branching narrative function that generates mystery story segments with 3 choices per scene" |
+
+### Iterate Incrementally
+
+For complex creative features, break your requests into smaller steps:
+
+1. **Start with the foundation**: "Create a basic canvas setup with a render loop"
+2. **Add core functionality**: "Add a particle class with position, velocity, and lifespan"
+3. **Enhance with creativity**: "Make particles leave colorful trails that fade over time"
+4. **Polish the experience**: "Add mouse interaction so particles are attracted to the cursor"
+
+### Validate AI Suggestions
+
+When Copilot generates creative code:
+
+- **Test incrementally**: Run the code after each significant change to catch issues early
+- **Trust but verify**: AI suggestions are starting points—review for correctness and style
+- **Learn from output**: If a suggestion doesn't match your intent, refine your prompt with more context
+- **Use Cheatsheets**: Keep reference documentation handy to validate generated code against known patterns
+
+### Prompt Templates for Creative Apps
+
+Here are reusable prompt patterns for common creative tasks:
+
+**For Visual Effects:**
+```
+Create a [effect type] effect using [library/framework] that [behavior description]. 
+The visual style should be [aesthetic description] with [color/mood] tones.
+```
+
+**For Generative Content:**
+```
+Build a [content type] generator that creates [output description] based on [input/parameters]. 
+Include options for [customization options] and output in [format].
+```
+
+**For Interactive Experiences:**
+```
+Implement [interaction type] that responds to [user input]. 
+When the user [action], the application should [response] with [feedback type].
+```
+
+### Using Inline Chat Effectively
+
+For quick edits directly in the editor (`Ctrl+I` / `Cmd+I`):
+
+- Select the specific code you want to modify before opening inline chat
+- Use follow-up prompts to refine without rewriting the whole request
+- Ask for explanations of generated code to understand the approach
+
+</details>
+
+---
+
+## 🤖 Available Models
+
+GitHub Copilot supports a variety of AI models with varying capabilities. You can choose different models based on your needs:
+
+- **GPT Models** - Strong general-purpose coding assistance
+- **Claude Models** - Excellent for nuanced explanations and creative tasks  
+- **Gemini Models** - Good for multimodal understanding
+
+To learn more about GitHub Copilot's capabilities and plans, visit: [GitHub Copilot Plans](https://github.com/features/copilot/plans)
+
+> **Note**: Model availability may vary based on your subscription plan. The techniques in this starter kit are model-agnostic and work across all supported models.
+
+---
+
+## Security & Disclaimer
+
+### Important: Protect Confidential Information
+
+⚠️ **Before submitting your project, please read our [Disclaimer](../../../DISCLAIMER.md).** This is a public repository accessible worldwide.
+
+#### What You Must NOT Include:
+
+- ❌ API keys, passwords, tokens, or credentials
+- ❌ Customer data or personally identifiable information (PII)
+- ❌ Confidential or proprietary company information
+- ❌ Internal engineering projects not approved for open source
+- ❌ Pre-release product information under NDA
+- ❌ Trade secrets or proprietary algorithms
+
+#### Security Best Practices:
+
+✅ **Use environment variables** - Store sensitive configuration in `.env` files (never commit these!)
+
+```bash
+# .env (add to .gitignore)
+API_KEY=your-key-here
+DATABASE_URL=your-connection-string
+```
+
+✅ **Review commit history** - Before pushing, check that no secrets were accidentally committed
+
+✅ **Use `.gitignore`** - Ensure sensitive files are excluded:
+
+```gitignore
+.env
+.env.local
+**/secrets/
+config/secrets.*
+*.pem
+*.key
+```
+
+✅ **Scan for secrets** - Use tools like [git-secrets](https://github.com/awslabs/git-secrets) or GitHub's secret scanning
+
+✅ **Use demo data only** - Never use real customer or production data in examples
+
+#### GitHub Secret Protection
+
+GitHub automatically scans for exposed secrets and will alert you if credentials are detected. Enable push protection in your repository settings for additional safety.
+
+#### Legal & Licensing
+
+By submitting to Agents League:
+- You confirm all content is your original work or properly licensed
+- You grant Microsoft a non-exclusive license to use your submission for the competition
+- You agree to the repository's [MIT License](../../../LICENSE)
+- You've read and agree to the [Code of Conduct](../../../CODE_OF_CONDUCT.md)
+
+For complete details, see the [Disclaimer](../../../DISCLAIMER.md).
+
+---
+
+## Requirements & Evaluation
+
+Your solution will be evaluated based on the following criteria. We're looking for projects that demonstrate both technical excellence and creative innovation:
+
+### Core Requirements
+
+#### 1. GitHub Copilot Usage (Required)
+
+Your project **must** demonstrate meaningful use of **GitHub Copilot** during development. This includes:
+
+- Using Copilot suggestions to accelerate code writing
+- Leveraging Copilot Chat for problem-solving, debugging, or code explanation
+- Documenting how Copilot assisted in your creative process
+
+#### 2. Creative Application (Required)
+
+Your submission **must** be a creative application that showcases innovation and imagination. The application should:
+
+- Demonstrate a unique or novel concept
+- Provide value, entertainment, or utility to users
+- Show thoughtful design in user experience
+
+### 🏆 Evaluation Criteria
+
+Projects are evaluated using this rubric, which combines scores from expert judges, product teams, and a community vote:
+
+- **Accuracy & Relevance (20%)** — Meets challenge requirements
+- **Reasoning & Multi-step Thinking (20%)** — Clear problem-solving approach
+- **Creativity & Originality (15%)** — Novel ideas or unexpected execution
+- **User Experience & Presentation (15%)** — Clear, polished, demoable
+- **Reliability & Safety (20%)** — Solid patterns, avoids obvious pitfalls
+- **Community vote (10%)** via the Discord poll available at https://aka.ms/agentsleague/discord
+
+---
+
+## 📚 Resources
+
+Explore the following resources to master GitHub Copilot and accelerate your creative development:
+
+<details>
+<summary>📖 Documentation & Learning Resources (click to expand)</summary>
+
+### GitHub Copilot Documentation
+
+Official documentation and guides for GitHub Copilot:
+
+- **Getting Started with GitHub Copilot**: [https://docs.github.com/en/copilot/getting-started-with-github-copilot](https://docs.github.com/en/copilot/getting-started-with-github-copilot)
+- **GitHub Copilot in VS Code**: [https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-your-ide](https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-your-ide)
+- **Copilot Chat Documentation**: [https://docs.github.com/en/copilot/using-github-copilot/asking-github-copilot-questions-in-your-ide](https://docs.github.com/en/copilot/using-github-copilot/asking-github-copilot-questions-in-your-ide)
+- **GitHub Copilot Plans**: [https://github.com/features/copilot/plans](https://github.com/features/copilot/plans)
+
+### Learning Resources
+
+Tutorials and courses to enhance your skills:
+
+- **GitHub Copilot Fundamentals**: [https://learn.microsoft.com/training/modules/introduction-to-github-copilot/](https://learn.microsoft.com/training/modules/introduction-to-github-copilot/)
+- **GitHub Skills - Code with Copilot**: [https://github.com/skills/copilot-codespaces-vscode](https://github.com/skills/copilot-codespaces-vscode)
+- **VS Code Tips and Tricks**: [https://code.visualstudio.com/docs/getstarted/tips-and-tricks](https://code.visualstudio.com/docs/getstarted/tips-and-tricks)
+
+</details>
+
+---
+
+Questions? Join the #creative-apps channel on [Discord](https://aka.ms/agentsleague/discord).
