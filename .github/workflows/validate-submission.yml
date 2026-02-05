@@ -17,33 +17,177 @@ jobs:
             const issue = context.payload.issue;
             console.log('Validating submission issue #' + issue.number);
             
-            // Check if issue body contains required fields
             const body = issue.body || '';
+            const errors = [];
+            const warnings = [];
             
-            // Extract repository URL
-            const repoUrlMatch = body.match(/### Repository URL\s*\n\s*(.+)/i);
-            if (!repoUrlMatch) {
+            // Helper function to extract field value
+            const extractField = (fieldName) => {
+              const regex = new RegExp(`### ${fieldName}\\s*\\n\\s*([\\s\\S]*?)(?=\\n### |$)`, 'i');
+              const match = body.match(regex);
+              if (!match) return null;
+              return match[1].trim();
+            };
+            
+            // Helper function to check if field has content (not empty or placeholder)
+            const hasContent = (value) => {
+              if (!value) return false;
+              const trimmed = value.trim();
+              if (trimmed === '' || trimmed === '_No response_') return false;
+              return true;
+            };
+            
+            // ========== REQUIRED FIELD VALIDATIONS ==========
+            
+            // 1. Track (dropdown - required)
+            const track = extractField('Track');
+            if (!hasContent(track)) {
+              errors.push('**Track**: Please select a track (Creative Apps, Reasoning Agents, or Enterprise Agents)');
+            } else {
+              const validTracks = ['Creative Apps (GitHub Copilot)', 'Reasoning Agents (Azure AI Foundry)', 'Enterprise Agents (M365 Agents Toolkit)'];
+              if (!validTracks.includes(track)) {
+                errors.push('**Track**: Invalid track selected. Must be one of: Creative Apps, Reasoning Agents, or Enterprise Agents');
+              }
+            }
+            
+            // 2. Project Name (required)
+            const projectName = extractField('Project Name');
+            if (!hasContent(projectName)) {
+              errors.push('**Project Name**: Please provide your project name');
+            }
+            
+            // 3. GitHub Username (required)
+            const githubUsername = extractField('GitHub Username');
+            if (!hasContent(githubUsername)) {
+              errors.push('**GitHub Username**: Please provide your GitHub username');
+            }
+            
+            // 4. Repository URL (required + format validation)
+            const repoUrl = extractField('Repository URL');
+            if (!hasContent(repoUrl)) {
+              errors.push('**Repository URL**: Please provide your GitHub repository URL');
+            } else if (!repoUrl.match(/^https:\/\/github\.com\/[\w-]+\/[\w.-]+/)) {
+              errors.push('**Repository URL**: Invalid format. Must be: https://github.com/username/repo');
+            }
+            
+            // 5. Project Description (required)
+            const description = extractField('Project Description');
+            if (!hasContent(description)) {
+              errors.push('**Project Description**: Please provide a description of your project');
+            }
+            
+            // 6. Demo Video or Screenshots (required)
+            const demo = extractField('Demo Video or Screenshots');
+            if (!hasContent(demo)) {
+              errors.push('**Demo Video or Screenshots**: Please provide links to demo materials');
+            }
+            
+            // 7. Primary Programming Language (dropdown - required)
+            const language = extractField('Primary Programming Language');
+            if (!hasContent(language)) {
+              errors.push('**Primary Programming Language**: Please select your primary programming language');
+            }
+            
+            // 8. Key Technologies Used (required)
+            const technologies = extractField('Key Technologies Used');
+            if (!hasContent(technologies)) {
+              errors.push('**Key Technologies Used**: Please list the key technologies used in your project');
+            }
+            
+            // 9. Submission Type (dropdown - required)
+            const submissionType = extractField('Submission Type');
+            if (!hasContent(submissionType)) {
+              errors.push('**Submission Type**: Please select Individual or Team');
+            }
+            
+            // 10. Quick Setup Summary (required)
+            const setupSummary = extractField('Quick Setup Summary');
+            if (!hasContent(setupSummary)) {
+              errors.push('**Quick Setup Summary**: Please provide setup instructions');
+            }
+            
+            // 11. Technical Highlights (required)
+            const highlights = extractField('Technical Highlights');
+            if (!hasContent(highlights)) {
+              errors.push('**Technical Highlights**: Please describe what you are most proud of in your implementation');
+            }
+            
+            // 12. Country/Region (required)
+            const country = extractField('Country\\/Region');
+            if (!hasContent(country)) {
+              errors.push('**Country/Region**: Please provide your country or region for prize eligibility');
+            }
+            
+            // ========== CHECKBOX VALIDATIONS ==========
+            const requirements = extractField('Submission Requirements');
+            if (requirements) {
+              const requiredCheckboxes = [
+                { text: 'track-specific challenge requirements', label: 'Track requirements confirmation' },
+                { text: 'comprehensive README.md', label: 'README confirmation' },
+                { text: 'hardcoded API keys', label: 'No hardcoded secrets confirmation' },
+                { text: 'demo materials', label: 'Demo materials confirmation' },
+                { text: 'my own work', label: 'Original work confirmation' },
+                { text: 'Code of Conduct', label: 'Code of Conduct agreement' },
+                { text: 'read and agree to the \\[Disclaimer\\]', label: 'Disclaimer agreement' },
+                { text: 'NOT contain any confidential', label: 'No confidential info confirmation' },
+                { text: 'rights to submit', label: 'Rights confirmation' }
+              ];
+              
+              for (const checkbox of requiredCheckboxes) {
+                const checkboxRegex = new RegExp(`\\[x\\].*${checkbox.text}`, 'i');
+                if (!checkboxRegex.test(requirements)) {
+                  errors.push(`**${checkbox.label}**: Required checkbox not checked`);
+                }
+              }
+            } else {
+              errors.push('**Submission Requirements**: All required checkboxes must be checked');
+            }
+            
+            // ========== OPTIONAL FIELD WARNINGS ==========
+            
+            // Team Members (required if team submission)
+            if (submissionType && submissionType.includes('Team')) {
+              const teamMembers = extractField('Team Members');
+              if (!hasContent(teamMembers)) {
+                warnings.push('**Team Members**: You selected Team submission but did not list team members');
+              }
+            }
+            
+            // ========== REPORT RESULTS ==========
+            
+            if (errors.length > 0) {
+              const errorMessage = `❌ **Submission Validation Failed**\n\nPlease fix the following issues:\n\n${errors.map(e => `- ${e}`).join('\n')}${warnings.length > 0 ? `\n\n⚠️ **Warnings:**\n${warnings.map(w => `- ${w}`).join('\n')}` : ''}\n\nPlease edit your submission to address these issues.`;
+              
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: '❌ Missing required field: Repository URL'
+                body: errorMessage
+              });
+              
+              // Add needs-revision label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['needs-revision']
               });
               return;
             }
             
-            const repoUrl = repoUrlMatch[1].trim();
-            console.log('✓ Repository URL found: ' + repoUrl);
+            // All validations passed
+            console.log('✓ All required fields validated');
             
-            // Validate GitHub URL format
-            if (!repoUrl.match(/^https:\/\/github\.com\/[\w-]+\/[\w.-]+/)) {
-              await github.rest.issues.createComment({
+            // Remove needs-revision label if present
+            try {
+              await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: '❌ Invalid GitHub repository URL format. Must be: https://github.com/username/repo'
+                name: 'needs-revision'
               });
-              return;
+            } catch (e) {
+              // Label might not exist, ignore
             }
             
             // Add validation success label
@@ -54,11 +198,17 @@ jobs:
               labels: ['validated']
             });
             
+            let successMessage = `✅ **Submission Validated!**\n\nThank you for participating in Agents League, **${projectName}** has been received!\n\n**Track:** ${track}\n**Submission Type:** ${submissionType}\n\nJudges will review your project during the evaluation period (Mar 1-13, 2026).`;
+            
+            if (warnings.length > 0) {
+              successMessage += `\n\n⚠️ **Recommendations:**\n${warnings.map(w => `- ${w}`).join('\n')}`;
+            }
+            
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue.number,
-              body: '✅ Submission validated! Thank you for participating in Agents League. Judges will review your project during the evaluation period (Mar 1-13, 2026).'
+              body: successMessage
             });
             
       - name: Check repository accessibility
