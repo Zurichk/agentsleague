@@ -108,18 +108,6 @@ If you have product feedback or errors while building visit:
 
 [![Microsoft Foundry Developer Forum](https://img.shields.io/badge/GitHub-Microsoft_Foundry_Developer_Forum-blue?style=for-the-badge&logo=github&color=000000&logoColor=fff)](https://aka.ms/foundry/forum)
 
-
-## Judging
-
-Projects are evaluated by experts and product teams using this rubric:
-
-- **Accuracy & Relevance (20%)** — Meets challenge requirements
-- **Reasoning & Multi-step Thinking (20%)** — Clear problem-solving approach
-- **Creativity & Originality (15%)** — Novel ideas or unexpected execution
-- **User Experience & Presentation (15%)** — Clear, polished, demoable
-- **Reliability & Safety (20%)** — Solid patterns, avoids obvious pitfalls
-- **Community vote (10%)** via the Discord poll available at https://aka.ms/agentsleague/discord
-
 ## Prizes & Recognition
 
 ### 🎖️ For All Participants
@@ -138,6 +126,17 @@ Projects are evaluated by experts and product teams using this rubric:
 - **GitHub Copilot Pro** - Awarded to:
   - Community Favorite (voted by community)
   - Product Team Picks (selected by Microsoft product teams)
+
+## Judging
+
+Projects are evaluated by experts and product teams using this rubric:
+
+- **Accuracy & Relevance (20%)** — Meets challenge requirements
+- **Reasoning & Multi-step Thinking (20%)** — Clear problem-solving approach
+- **Creativity & Originality (15%)** — Novel ideas or unexpected execution
+- **User Experience & Presentation (15%)** — Clear, polished, demoable
+- **Reliability & Safety (20%)** — Solid patterns, avoids obvious pitfalls
+- **Community vote (10%)** via the Discord poll available at https://aka.ms/agentsleague/discord
 
 ## Resources
 
