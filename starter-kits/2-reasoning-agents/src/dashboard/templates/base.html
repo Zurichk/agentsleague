@@ -1,0 +1,118 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AEP CertMaster - Sistema Inteligente Microsoft{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        /* Variables globales */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f3f4f6;
+            color: #212529;
+        }
+
+        /* Navbar */
+        .main-nav {
+            background: #0078d4;
+            border-bottom: 3px solid #005a9e;
+            padding: 0 1rem;
+        }
+
+        .main-nav .nav-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+
+        .main-nav .brand {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: white;
+            text-decoration: none;
+            letter-spacing: 0;
+        }
+
+        .main-nav .nav-links {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .main-nav .nav-links a {
+            color: rgba(255, 255, 255, 0.92);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .main-nav .nav-links a:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+        }
+
+        /* Page content */
+        .page-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+
+        /* Footer */
+        .main-footer {
+            background: #e9ecef;
+            border-top: 1px solid #dee2e6;
+            padding: 12px 16px;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-top: 40px;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+    <nav class="main-nav">
+        <div class="nav-inner">
+            <a href="/" class="brand"> AEP CertMaster</a>
+            <div class="nav-links">
+                <a href="/"> Inicio</a>
+                <a href="/chat"> Chat</a>
+                <a href="/assessment"> Evaluación</a>
+                <a href="/progress"> Progreso</a>
+                <a href="/logs"> Logs</a>
+                <a href="/health"> Estado</a>
+                {% if 'username' in session %}
+                <span style="color:rgba(255,255,255,0.7); padding:6px 8px; font-size:0.85rem;">
+                    👤 {{ session.name or session.username }}
+                </span>
+                <a href="/auth/logout" style="background:rgba(255,255,255,0.15); border-radius:4px;">Salir</a>
+                {% else %}
+                <a href="/login" style="background:rgba(255,255,255,0.15); border-radius:4px;">Iniciar sesión</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="page-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="main-footer">
+        &copy; 2026 AEP CertMaster - Sistema Multi-Agente para Certificaciones Microsoft
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

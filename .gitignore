@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+docs/
 
 # API keys and secrets
 **/secrets/

@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}Logs del Sistema - AEP CertMaster{% endblock %}
+
+{% block extra_head %}
+<style>
+    .stats-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .stat-tile {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .stat-num {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0078d4;
+        margin-bottom: 2px;
+    }
+
+    .stat-lbl {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
+    .table-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .table-card table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table-card th {
+        background: #f8f9fa;
+        padding: 10px 14px;
+        text-align: left;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #495057;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .table-card td {
+        padding: 10px 14px;
+        font-size: 0.85rem;
+        border-bottom: 1px solid #f0f0f0;
+        color: #212529;
+        vertical-align: top;
+    }
+
+    .table-card tr:hover td {
+        background: #f8f9fa;
+        cursor: pointer;
+    }
+
+    .phase-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .phase-badge.preparation {
+        background: #e3f2fd;
+        color: #1565c0;
+    }
+
+    .phase-badge.assessment {
+        background: #fff8e1;
+        color: #f57f17;
+    }
+
+    .phase-badge.certification {
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-overlay.open {
+        display: flex;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 10px;
+        padding: 24px;
+        max-width: 600px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        position: relative;
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        background: none;
+        border: none;
+        font-size: 1.4rem;
+        cursor: pointer;
+        color: #6c757d;
+    }
+
+    .modal-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 16px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .detail-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 8px;
+        font-size: 0.88rem;
+    }
+
+    .detail-key {
+        font-weight: 500;
+        color: #6c757d;
+        min-width: 130px;
+    }
+
+    .detail-val {
+        color: #212529;
+    }
+
+    .page-header {
+        background: #0078d4;
+        color: white;
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+    }
+
+    .page-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+    }
+
+    .page-header p {
+        margin: 0;
+        opacity: 0.88;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📊 Logs del Sistema</h1>
+    <p>Registro de interacciones del sistema multi-agente</p>
+</div>
+
+<div class="stats-bar">
+    <div class="stat-tile">
+        <div class="stat-num" id="total-logs">0</div>
+        <div class="stat-lbl">Total de Logs</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-num" id="unique-users">0</div>
+        <div class="stat-lbl">Usuarios Únicos</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-num" id="agents-used">0</div>
+        <div class="stat-lbl">Agentes Usados</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-num" id="avg-session">0</div>
+        <div class="stat-lbl">Promedio Sesión</div>
+    </div>
+</div>
+
+<div class="table-card">
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Usuario</th>
+                <th>Fase</th>
+                <th>Agente</th>
+                <th>Mensaje</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="logs-table-body">
+            <tr>
+                <td colspan="6" style="text-align:center; color:#6c757d; padding:24px;">Cargando logs...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal de detalles -->
+<div class="modal-overlay" id="log-modal">
+    <div class="modal-box">
+        <button class="modal-close" id="close-modal" title="Cerrar">&times;</button>
+        <div class="modal-title">📋 Detalles del Log</div>
+        <div id="log-details"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const agentIcons = {
+        OrchestratorAgent: '🧠', CuratorAgent: '🏛️', StudyPlanAgent: '📚',
+        EngagementAgent: '🎯', AssessmentAgent: '📝', CriticAgent: '🔍', CertAdvisorAgent: '🎓'
+    };
+
+    async function loadLogs() {
+        try {
+            const r = await fetch('/api/logs');
+            const data = await r.json();
+            const logs = Array.isArray(data) ? data : (data.logs || []);
+
+            const tbody = document.getElementById('logs-table-body');
+            tbody.innerHTML = '';
+
+            const uniqueUsers = new Set();
+            const agentsSet = new Set();
+
+            logs.forEach(function (log, logIdx) {
+                uniqueUsers.add(log.student_id);
+                // Leer agent_name directamente desde el objeto (proviene de la BD)
+                let agentName = log.agent_name || 'OrchestratorAgent';
+                if (agentName && agentName !== 'OrchestratorAgent') {
+                    agentsSet.add(agentName);
+                }
+                const ts = new Date(log.timestamp).toLocaleString('es-ES');
+                const phase = log.phase || '';
+                const msg = (log.user_message || '').substring(0, 60) + ((log.user_message || '').length > 60 ? '…' : '');
+                const icon = agentIcons[agentName] || '🤖';
+                const phaseCls = ['preparation', 'assessment', 'certification'].indexOf(phase) >= 0 ? phase : '';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td style="white-space:nowrap;color:#6c757d;font-size:0.8rem;">' + ts + '</td>' +
+                    '<td>' + (log.student_id || '—') + '</td>' +
+                    '<td><span class="phase-badge ' + phaseCls + '">' + (phase || '—') + '</span></td>' +
+                    '<td>' + icon + ' ' + agentName + '</td>' +
+                    '<td>' + msg + '</td>' +
+                    '<td><a href="#" style="color:#0078d4;font-size:0.82rem;" onclick="showLog(event, window._logs[' + logIdx + '])">Ver</a></td>';
+                tbody.appendChild(tr);
+            });
+
+            window._logs = logs;
+
+            document.getElementById('total-logs').textContent = logs.length;
+            document.getElementById('unique-users').textContent = uniqueUsers.size;
+            document.getElementById('agents-used').textContent = agentsSet.size;
+            document.getElementById('avg-session').textContent = logs.length > 0 && uniqueUsers.size > 0
+                ? Math.round(logs.length / uniqueUsers.size) : 0;
+
+
+        } catch (e) {
+            document.getElementById('logs-table-body').innerHTML =
+                '<tr><td colspan="6" style="text-align:center;color:#dc3545;padding:20px;">Error al cargar logs: ' + e.message + '</td></tr>';
+        }
+    }
+
+    function showLog(e, log) {
+        e.preventDefault();
+        const details = document.getElementById('log-details');
+        const ts = new Date(log.timestamp).toLocaleString('es-ES');
+        details.innerHTML =
+            '<div class="detail-row"><span class="detail-key">Timestamp</span><span class="detail-val">' + ts + '</span></div>' +
+            '<div class="detail-row"><span class="detail-key">Usuario</span><span class="detail-val">' + (log.student_id || '—') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-key">Fase</span><span class="detail-val">' + (log.phase || '—') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-key">Mensaje del usuario</span><span class="detail-val">' + (log.user_message || '') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-key">Respuesta</span><span class="detail-val">' + (log.agent_response || '').substring(0, 400) + '</span></div>';
+        document.getElementById('log-modal').classList.add('open');
+    }
+
+    document.getElementById('close-modal').addEventListener('click', function () {
+        document.getElementById('log-modal').classList.remove('open');
+    });
+    document.getElementById('log-modal').addEventListener('click', function (e) {
+        if (e.target === this) this.classList.remove('open');
+    });
+
+    document.addEventListener('DOMContentLoaded', function () { loadLogs(); });
+</script>
+{% endblock %}

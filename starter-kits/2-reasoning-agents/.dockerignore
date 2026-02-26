@@ -1,0 +1,50 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Variables de entorno (se inyectan en Render Dashboard)
+.env
+.env.*
+!.env.example
+
+# Logs locales (se generan en tiempo de ejecución)
+logs/
+
+# Base de datos local (se genera/monta en tiempo de ejecución)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Herramientas de desarrollo
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docs y archivos de repositorio (no necesarios en runtime)
+*.md
+LICENSE
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+DISCLAIMER.md
+SECURITY.md
+ROADMAP.md

@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+{% block title %}Evaluación Interactiva - AEP CertMaster{% endblock %}
+
+{% block extra_head %}
+<style>
+    .section-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    .section-card h2 {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #212529;
+        margin: 0 0 18px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 500;
+        color: #495057;
+        margin-bottom: 5px;
+        font-size: 0.9rem;
+    }
+
+    .form-select {
+        width: 100%;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        padding: 9px 12px;
+        font-size: 0.95rem;
+        background: white;
+        color: #212529;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    .form-select:focus {
+        border-color: #0078d4;
+        box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+        outline: none;
+    }
+
+    .btn-primary {
+        background: #0078d4;
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    .btn-primary:hover {
+        background: #005a9e;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .btn-secondary:disabled {
+        background: #ced4da;
+        cursor: not-allowed;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .quiz-progress {
+        background: #f0f0f0;
+        border-radius: 4px;
+        height: 8px;
+        margin-bottom: 8px;
+    }
+
+    .quiz-progress-fill {
+        background: #0078d4;
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s;
+    }
+
+    .quiz-progress-text {
+        font-size: 0.82rem;
+        color: #6c757d;
+        text-align: right;
+        margin-bottom: 16px;
+    }
+
+    .question-text {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #212529;
+        margin-bottom: 16px;
+        line-height: 1.5;
+    }
+
+    .question-timer {
+        float: right;
+        background: #e9ecef;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        color: #495057;
+        font-weight: 600;
+    }
+
+    .option {
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .option:hover {
+        border-color: #0078d4;
+        background: #f0f7ff;
+    }
+
+    .option.selected {
+        border-color: #0078d4;
+        background: #e6f3fb;
+    }
+
+    .option-letter {
+        font-weight: 700;
+        color: #0078d4;
+        min-width: 22px;
+    }
+
+    .option-text {
+        color: #212529;
+    }
+
+    .nav-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 18px;
+    }
+
+    .results-score {
+        font-size: 2.5rem;
+        font-weight: 700;
+        text-align: center;
+        margin: 16px 0;
+    }
+
+    .results-passed {
+        color: #28a745;
+    }
+
+    .results-failed {
+        color: #dc3545;
+    }
+
+    .analysis-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 16px;
+    }
+
+    .analysis-title {
+        font-weight: 600;
+        color: #0078d4;
+        margin-bottom: 8px;
+    }
+
+    .analysis-text {
+        color: #495057;
+        line-height: 1.5;
+        font-size: 0.9rem;
+    }
+
+    .page-header {
+        background: #0078d4;
+        color: white;
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+    }
+
+    .page-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+    }
+
+    .page-header p {
+        margin: 0;
+        opacity: 0.88;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📝 Evaluación Interactiva</h1>
+    <p>Mide tu nivel de conocimientos con preguntas generadas por IA</p>
+</div>
+
+<!-- Setup -->
+<div class="section-card" id="setup-section">
+    <h2>⚙️ Configurar Evaluación</h2>
+    {% if chosen_cert %}
+    <div class="form-group">
+        <label class="form-label">Certificación a evaluar</label>
+        <div
+            style="background:#f0f7ff; border:2px solid #0078d4; border-radius:6px; padding:10px 14px; font-weight:600; color:#0078d4; font-size:0.95rem;">
+            🎯 {{ chosen_cert }}
+        </div>
+        <input type="hidden" id="certification-value" value="{{ chosen_cert }}">
+        <p style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">Basada en tu plan de estudio actual. <a
+                href="/chat" style="color:#0078d4;">Cambiar en el chat →</a></p>
+    </div>
+    {% else %}
+    <div class="form-group">
+        <label for="certification-input" class="form-label">Certificación</label>
+        <input type="text" id="certification-input" class="form-select" placeholder="Ej: AZ-900, MB-800, AI-102..."
+            style="font-family:'Segoe UI',Arial,sans-serif;">
+        <p style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">Aún no tienes un plan de estudio. <a href="/chat"
+                style="color:#0078d4;">Inicia el chat para que el agente te recomiende una certificación →</a></p>
+    </div>
+    {% endif %}
+    <div class="form-group">
+        <label for="questions-select" class="form-label">Número de preguntas</label>
+        <select id="questions-select" class="form-select">
+            <option value="5">5 preguntas</option>
+            <option value="10" selected>10 preguntas</option>
+            <option value="20">20 preguntas</option>
+        </select>
+    </div>
+    <button class="btn-primary" id="start-assessment-btn">Iniciar Evaluación →</button>
+</div>
+
+<!-- Quiz -->
+<div class="section-card hidden" id="quiz-section">
+    <h2 id="quiz-title">📝 Evaluación en Curso</h2>
+    <div class="quiz-progress">
+        <div class="quiz-progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+    <div class="quiz-progress-text" id="progress-text">Pregunta 1 de 10</div>
+    <div id="question-card"></div>
+    <div class="nav-buttons">
+        <button class="btn-secondary" id="prev-btn" disabled>← Anterior</button>
+        <button class="btn-primary" id="next-btn">Siguiente →</button>
+    </div>
+</div>
+
+<!-- Results -->
+<div class="section-card hidden" id="results-section">
+    <h2>🏆 Resultados de la Evaluación</h2>
+    <div class="results-score" id="results-score">—</div>
+    <div class="analysis-box" id="results-analysis">
+        <div class="analysis-title">🔍 Análisis del Critic Agent</div>
+        <div class="analysis-text" id="results-text">—</div>
+    </div>
+    <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="location.reload()">Nueva Evaluación</button>
+        <a href="/progress" class="btn-secondary" style="text-decoration:none;display:inline-block;">Ver Progreso</a>
+        <a href="/" class="btn-secondary" style="text-decoration:none;display:inline-block;">Volver al Inicio</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentQuestions = [];
+    let currentAnswers = {};
+    let currentSessionToken = '';
+    let currentQuestionIndex = 0;
+    let timer = null;
+    let timeLeft = 0;
+
+    document.getElementById('start-assessment-btn').addEventListener('click', startAssessment);
+    document.getElementById('next-btn').addEventListener('click', nextQuestion);
+    document.getElementById('prev-btn').addEventListener('click', previousQuestion);
+
+    async function startAssessment() {
+        // Obtener la cert del perfil del estudiante (hidden input) o del campo de texto
+        const certEl = document.getElementById('certification-value');
+        const certInput = document.getElementById('certification-input');
+        const cert = certEl ? certEl.value.trim() : (certInput ? certInput.value.trim() : '');
+        if (!cert) {
+            alert('Por favor indica la certificación a evaluar, o inicia el chat para que el agente te recomiende una.');
+            return;
+        }
+        const count = document.getElementById('questions-select').value;
+        document.getElementById('start-assessment-btn').disabled = true;
+        document.getElementById('start-assessment-btn').textContent = 'Generando preguntas...';
+        try {
+            const r = await fetch('/api/assessment/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ certification: cert, student_level: 'intermediate', question_count: count })
+            });
+            const data = await r.json();
+            if (data.success) {
+                currentQuestions = data.questions;
+                currentSessionToken = data.session_token || '';
+                currentAnswers = {};
+                currentQuestionIndex = 0;
+                document.getElementById('setup-section').classList.add('hidden');
+                document.getElementById('quiz-section').classList.remove('hidden');
+                document.getElementById('quiz-title').textContent = '\ud83d\udcdd Evaluación — ' + cert;
+                loadQuestion(0);
+                updateProgress();
+            } else {
+                alert('Error: ' + data.message);
+                document.getElementById('start-assessment-btn').disabled = false;
+                document.getElementById('start-assessment-btn').textContent = 'Iniciar Evaluación →';
+            }
+        } catch (e) {
+            alert('Error conectando con el servidor');
+            document.getElementById('start-assessment-btn').disabled = false;
+            document.getElementById('start-assessment-btn').textContent = 'Iniciar Evaluación →';
+        }
+    }
+
+    function loadQuestion(idx) {
+        const q = currentQuestions[idx];
+        clearInterval(timer);
+        timeLeft = 60;
+        const qcard = document.getElementById('question-card');
+        qcard.innerHTML = '<div>' +
+            '<span class="question-timer" id="timer">60s</span>' +
+            '<div class="question-text">' + q.question + '</div>' +
+            '<div class="options-list">' +
+            Object.entries(q.options || {}).map(function (e) {
+                const isSelected = currentAnswers[q.id] === e[0];
+                return '<div class="option' + (isSelected ? ' selected' : '') + '" data-opt="' + e[0] + '">' +
+                    '<span class="option-letter">' + e[0].toUpperCase() + '.</span>' +
+                    '<span class="option-text">' + e[1] + '</span></div>';
+            }).join('') +
+            '</div></div>';
+
+        qcard.querySelectorAll('.option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                currentAnswers[q.id] = this.dataset.opt;
+                qcard.querySelectorAll('.option').forEach(function (o) { o.classList.remove('selected'); });
+                this.classList.add('selected');
+            });
+        });
+
+        timer = setInterval(function () {
+            timeLeft--;
+            const el = document.getElementById('timer');
+            if (el) el.textContent = timeLeft + 's';
+            if (timeLeft <= 0) { clearInterval(timer); nextQuestion(); }
+        }, 1000);
+
+        updateNavigation();
+    }
+
+    function updateProgress() {
+        const pct = ((currentQuestionIndex + 1) / currentQuestions.length) * 100;
+        document.getElementById('progress-fill').style.width = pct + '%';
+        document.getElementById('progress-text').textContent =
+            'Pregunta ' + (currentQuestionIndex + 1) + ' de ' + currentQuestions.length;
+    }
+
+    function updateNavigation() {
+        document.getElementById('prev-btn').disabled = currentQuestionIndex === 0;
+        document.getElementById('next-btn').textContent =
+            currentQuestionIndex === currentQuestions.length - 1 ? 'Finalizar ✓' : 'Siguiente →';
+    }
+
+    function nextQuestion() {
+        clearInterval(timer);
+        if (currentQuestionIndex < currentQuestions.length - 1) {
+            currentQuestionIndex++;
+            loadQuestion(currentQuestionIndex);
+            updateProgress();
+        } else {
+            submitAssessment();
+        }
+    }
+
+    function previousQuestion() {
+        if (currentQuestionIndex > 0) {
+            clearInterval(timer);
+            currentQuestionIndex--;
+            loadQuestion(currentQuestionIndex);
+            updateProgress();
+        }
+    }
+
+    async function submitAssessment() {
+        clearInterval(timer);
+        document.getElementById('quiz-section').classList.add('hidden');
+        document.getElementById('results-section').classList.remove('hidden');
+        document.getElementById('results-score').textContent = 'Calculando...';
+        const certEl = document.getElementById('certification-value');
+        const certInput = document.getElementById('certification-input');
+        const cert = certEl ? certEl.value.trim() : (certInput ? certInput.value.trim() : '');
+        try {
+            const r = await fetch('/api/assessment/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answers: currentAnswers, certification: cert, session_token: currentSessionToken })
+            });
+            const data = await r.json();
+            if (data.success) {
+                const el = document.getElementById('results-score');
+                el.textContent = data.score + '/' + data.total + ' (' + data.percentage.toFixed(1) + '%)';
+                el.className = 'results-score ' + (data.passed ? 'results-passed' : 'results-failed');
+                document.getElementById('results-text').textContent = data.critic_analysis || '—';
+            } else {
+                document.getElementById('results-score').textContent = 'Error';
+                document.getElementById('results-text').textContent = data.message || 'Error desconocido';
+            }
+        } catch (e) {
+            document.getElementById('results-score').textContent = 'Error al conectar';
+        }
+    }
+</script>
+{% endblock %}

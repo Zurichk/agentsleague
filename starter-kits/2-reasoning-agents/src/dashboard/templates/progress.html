@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Mi Progreso - AEP CertMaster{% endblock %}
+
+{% block extra_head %}
+<style>
+    .page-header {
+        background: #0078d4;
+        color: white;
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+    }
+
+    .page-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+    }
+
+    .page-header p {
+        margin: 0;
+        opacity: 0.88;
+        font-size: 0.9rem;
+    }
+
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .overview-tile {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .overview-val {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0078d4;
+        margin-bottom: 3px;
+    }
+
+    .overview-lbl {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
+    .section-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    .section-card h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #212529;
+        margin: 0 0 16px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    @media(max-width:640px) {
+        .two-col {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .analysis-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+    }
+
+    .analysis-box h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #0078d4;
+        margin: 0 0 10px 0;
+    }
+
+    .analysis-item {
+        padding: 5px 0;
+        font-size: 0.88rem;
+        color: #495057;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .analysis-item:last-child {
+        border-bottom: none;
+    }
+
+    .insights-box {
+        background: #e6f3fb;
+        border: 1px solid #b3d9f5;
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 16px;
+    }
+
+    .insights-box h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #0078d4;
+        margin: 0 0 10px 0;
+    }
+
+    .insights-text {
+        font-size: 0.9rem;
+        color: #212529;
+        line-height: 1.5;
+    }
+
+    .recommendations-list {
+        list-style: none;
+        padding: 0;
+        margin: 10px 0 0;
+    }
+
+    .recommendations-list li {
+        padding: 5px 0 5px 18px;
+        font-size: 0.88rem;
+        color: #495057;
+        position: relative;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .recommendations-list li:last-child {
+        border-bottom: none;
+    }
+
+    .recommendations-list li::before {
+        content: '→';
+        position: absolute;
+        left: 0;
+        color: #0078d4;
+    }
+
+    .quick-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn-action {
+        display: inline-block;
+        padding: 9px 20px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .btn-action.primary {
+        background: #0078d4;
+        color: white;
+    }
+
+    .btn-action.secondary {
+        border: 1px solid #0078d4;
+        color: #0078d4;
+        background: white;
+    }
+
+    .chart-placeholder {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📊 Dashboard de Progreso</h1>
+    <p>Análisis de tu rendimiento y recomendaciones personalizadas</p>
+</div>
+
+<div class="overview-grid">
+    <div class="overview-tile">
+        <div class="overview-val" id="overall-progress">—</div>
+        <div class="overview-lbl">Progreso General</div>
+    </div>
+    <div class="overview-tile">
+        <div class="overview-val" id="certifications-count">0</div>
+        <div class="overview-lbl">Certificaciones</div>
+    </div>
+    <div class="overview-tile">
+        <div class="overview-val" id="study-hours">0h</div>
+        <div class="overview-lbl">Horas de Estudio</div>
+    </div>
+    <div class="overview-tile">
+        <div class="overview-val" id="active-days">0</div>
+        <div class="overview-lbl">Días Activos</div>
+    </div>
+    <div class="overview-tile">
+        <div class="overview-val" id="average-score">—</div>
+        <div class="overview-lbl">Puntuación Promedio</div>
+    </div>
+</div>
+
+<div class="section-card" id="charts-section" style="display:none;">
+    <h2>📈 Gráficos de Rendimiento</h2>
+    <div class="two-col">
+        <div>
+            <div style="font-size:0.85rem;font-weight:500;color:#495057;margin-bottom:8px;">Tendencia de Progreso</div>
+            <div class="chart-placeholder"><canvas id="progressChart" style="max-height:180px;"></canvas></div>
+        </div>
+        <div>
+            <div style="font-size:0.85rem;font-weight:500;color:#495057;margin-bottom:8px;">Rendimiento por Módulo</div>
+            <div class="chart-placeholder"><canvas id="modulesChart" style="max-height:180px;"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="section-card" id="analysis-section" style="display:none;">
+    <h2>🔍 Análisis de Rendimiento</h2>
+    <div class="two-col">
+        <div class="analysis-box">
+            <h3>💪 Áreas Fuertes</h3>
+            <div id="strengths-list">
+                <div style="color:#6c757d;font-size:0.88rem;">Cargando...</div>
+            </div>
+        </div>
+        <div class="analysis-box">
+            <h3>🎯 Áreas de Mejora</h3>
+            <div id="weaknesses-list">
+                <div style="color:#6c757d;font-size:0.88rem;">Cargando...</div>
+            </div>
+        </div>
+    </div>
+    <div class="insights-box" id="insights-section" style="display:none;">
+        <h3>🧠 Análisis del Critic Agent</h3>
+        <div class="insights-text" id="critic-analysis">—</div>
+        <ul class="recommendations-list" id="recommendations-list"></ul>
+        <div style="margin-top:12px;font-size:0.88rem;"><strong>Predicción: </strong><span id="predicted-outcome"
+                style="color:#0078d4;"></span></div>
+    </div>
+</div>
+
+<div class="section-card">
+    <h2>🔗 Acciones Rápidas</h2>
+    <div class="quick-actions">
+        <a href="/assessment" class="btn-action primary">📝 Nueva Evaluación</a>
+        <a href="/study-plan" class="btn-action secondary">📚 Plan de Estudio</a>
+        <a href="/chat" class="btn-action secondary">💬 Chat</a>
+        <a href="/" class="btn-action secondary">🏠 Inicio</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadProgressData() {
+        try {
+            const overviewR = await fetch('/api/progress/overview');
+            const overview = await overviewR.json();
+            if (overview.success && overview.data) {
+                const d = overview.data;
+                document.getElementById('overall-progress').textContent = (d.overall_progress || 0) + '%';
+                document.getElementById('certifications-count').textContent = d.certifications_completed || 0;
+                document.getElementById('study-hours').textContent = (d.total_study_hours || 0) + 'h';
+                document.getElementById('active-days').textContent = d.active_days || 0;
+                document.getElementById('average-score').textContent = d.average_score !== undefined ? d.average_score.toFixed(0) + '%' : '—';
+            }
+        } catch (e) { }
+
+        try {
+            const detailR = await fetch('/api/progress/detailed');
+            const detail = await detailR.json();
+            if (detail.success && detail.data) {
+                const d = detail.data;
+                document.getElementById('analysis-section').style.display = 'block';
+                if (d.strengths) {
+                    document.getElementById('strengths-list').innerHTML = d.strengths.map(function (s) {
+                        return '<div class="analysis-item">✓ ' + s + '</div>';
+                    }).join('');
+                }
+                if (d.weaknesses) {
+                    document.getElementById('weaknesses-list').innerHTML = d.weaknesses.map(function (w) {
+                        return '<div class="analysis-item">→ ' + w + '</div>';
+                    }).join('');
+                }
+            }
+        } catch (e) { }
+
+        try {
+            const insR = await fetch('/api/progress/insights');
+            const ins = await insR.json();
+            if (ins.success && ins.data) {
+                const d = ins.data;
+                const sec = document.getElementById('insights-section');
+                sec.style.display = 'block';
+                if (d.critic_analysis) document.getElementById('critic-analysis').textContent = d.critic_analysis;
+                if (d.recommendations) {
+                    document.getElementById('recommendations-list').innerHTML = d.recommendations.map(function (r) {
+                        return '<li>' + r + '</li>';
+                    }).join('');
+                }
+                if (d.predicted_outcome) document.getElementById('predicted-outcome').textContent = d.predicted_outcome;
+            }
+        } catch (e) { }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadProgressData);
+</script>
+{% endblock %}

@@ -1,0 +1,107 @@
+﻿{% extends "base.html" %}
+{% block title %}Estado del Sistema - AEP CertMaster{% endblock %}
+
+{% block extra_head %}
+<style>
+    .metric-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
+    .metric-tile { background:white; border:1px solid #dee2e6; border-radius:8px; padding:18px; text-align:center; }
+    .metric-num { font-size:2rem; font-weight:700; color:#0078d4; line-height:1; margin-bottom:4px; }
+    .metric-lbl { font-size:0.82rem; color:#6c757d; }
+    .agent-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-top:16px; }
+    .agent-tile { text-align:center; background:white; border:1px solid #dee2e6; border-radius:8px; padding:14px; }
+    .agent-tile-icon { font-size:1.8rem; margin-bottom:6px; }
+    .agent-tile-name { font-size:0.85rem; color:#0078d4; font-weight:500; }
+    .status-ok { color:#28a745; font-weight:600; font-size:1.1rem; }
+    .status-err { color:#dc3545; font-weight:600; }
+    .section-card { background:white; border:1px solid #dee2e6; border-radius:10px; padding:24px; margin-bottom:20px; }
+    .section-card h2 { font-size:1.1rem; font-weight:600; color:#212529; margin:0 0 16px 0; padding-bottom:10px; border-bottom:1px solid #dee2e6; }
+    .refresh-btn { background:#0078d4; color:white; border:none; padding:8px 20px; border-radius:5px; cursor:pointer; font-size:0.9rem; font-family:'Segoe UI',Arial,sans-serif; }
+    .refresh-btn:hover { background:#005a9e; }
+    .timestamp { color:#6c757d; font-size:0.82rem; margin-top:12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="background:#0078d4;color:white;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
+    <h1 style="font-size:1.6rem;font-weight:700;margin:0 0 4px 0;"> Estado del Sistema</h1>
+    <p style="margin:0;opacity:0.88;">Monitoreo en tiempo real del sistema multi-agente AEP CertMaster</p>
+</div>
+
+<div class="section-card">
+    <h2> Métricas Generales</h2>
+    <div class="metric-grid" id="health-content">
+        <div class="metric-tile">
+            <div class="metric-num">...</div>
+            <div class="metric-lbl">Cargando...</div>
+        </div>
+    </div>
+    <button class="refresh-btn" onclick="loadHealthStatus()"> Actualizar</button>
+</div>
+
+<div class="section-card" id="agents-section" style="display:none">
+    <h2> Agentes Registrados</h2>
+    <div class="agent-grid" id="agents-grid"></div>
+</div>
+
+<div style="color:#6c757d;font-size:0.82rem;text-align:center;" id="ts-display"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const agentIcons = {
+        curator:'', study_plan:'', engagement:'',
+        assessment:'', critic:'', cert_advisor:''
+    };
+    const agentNames = {
+        curator:'Curator', study_plan:'Plan de Estudio', engagement:'Engagement',
+        assessment:'Evaluación', critic:'Crítico', cert_advisor:'Asesor Cert.'
+    };
+
+    async function loadHealthStatus() {
+        try {
+            const r = await fetch('/api/health');
+            const d = await r.json();
+            const content = document.getElementById('health-content');
+            content.innerHTML = `
+                <div class="metric-tile">
+                    <div class="metric-num" style="color:#28a745">OK</div>
+                    <div class="metric-lbl">Estado del Sistema</div>
+                </div>
+                <div class="metric-tile">
+                    <div class="metric-num">${d.total_interactions || 0}</div>
+                    <div class="metric-lbl">Interacciones Totales</div>
+                </div>
+                <div class="metric-tile">
+                    <div class="metric-num">${d.specialized_agents ? d.specialized_agents.length : 0}</div>
+                    <div class="metric-lbl">Agentes Activos</div>
+                </div>
+                <div class="metric-tile">
+                    <div class="metric-num">5033</div>
+                    <div class="metric-lbl">Puerto</div>
+                </div>
+            `;
+
+            if (d.specialized_agents && d.specialized_agents.length > 0) {
+                const grid = document.getElementById('agents-grid');
+                grid.innerHTML = d.specialized_agents.map(a => `
+                    <div class="agent-tile">
+                        <div class="agent-tile-icon">${agentIcons[a] || ''}</div>
+                        <div class="agent-tile-name">${agentNames[a] || a}</div>
+                    </div>
+                `).join('');
+                document.getElementById('agents-section').style.display = 'block';
+            }
+
+            document.getElementById('ts-display').textContent =
+                'Última actualización: ' + new Date().toLocaleString();
+        } catch(e) {
+            document.getElementById('health-content').innerHTML =
+                '<div class="metric-tile"><div class="metric-num status-err"></div><div class="metric-lbl">Error al conectar</div></div>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadHealthStatus);
+</script>
+{% endblock %}

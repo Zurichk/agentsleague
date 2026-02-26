@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEP CertMaster – Iniciar sesión</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f3f4f6;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 36px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        .brand {
+            color: #0078d4;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .tab {
+            cursor: pointer;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.15s;
+        }
+
+        .tab.active {
+            background: #0078d4;
+            color: white;
+        }
+
+        .tab:not(.active) {
+            color: #6c757d;
+        }
+
+        .tab:not(.active):hover {
+            background: #e9ecef;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #495057;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 9px 12px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        input:focus {
+            border-color: #0078d4;
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .btn-primary:hover {
+            background: #005a9e;
+        }
+
+        .btn-primary:disabled {
+            background: #a5c5e7;
+            cursor: not-allowed;
+        }
+
+        .alert {
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+
+        .alert-error {
+            background: #fde8e8;
+            color: #c0392b;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-success {
+            background: #e6f4ea;
+            color: #1e7e34;
+            border: 1px solid #c3e6cb;
+        }
+    </style>
+</head>
+
+<body>
+    <div
+        style="min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
+        <div class="card">
+            <!-- Logo / Brand -->
+            <div style="text-align:center; margin-bottom:28px;">
+                <div class="brand">🎓 AEP CertMaster</div>
+                <p style="color:#6c757d; font-size:0.88rem; margin-top:4px;">Sistema Inteligente de Certificaciones
+                    Microsoft</p>
+            </div>
+
+            <!-- Tabs -->
+            <div style="display:flex; gap:6px; margin-bottom:24px; background:#f8f9fa; border-radius:8px; padding:4px;">
+                <div class="tab active" id="tab-login" onclick="switchTab('login')" style="flex:1; text-align:center;">
+                    Iniciar sesión</div>
+                <div class="tab" id="tab-register" onclick="switchTab('register')" style="flex:1; text-align:center;">
+                    Registrarse</div>
+            </div>
+
+            <!-- Mensajes -->
+            <div id="msg" style="display:none;"></div>
+
+            <!-- Formulario LOGIN -->
+            <form id="form-login" onsubmit="submitLogin(event)">
+                <div style="margin-bottom:14px;">
+                    <label for="login-user">Usuario o email</label>
+                    <input type="text" id="login-user" placeholder="tu_usuario o correo@ejemplo.com"
+                        autocomplete="username" required>
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label for="login-pass">Contraseña</label>
+                    <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"
+                        required>
+                </div>
+                <button type="submit" class="btn-primary" id="btn-login">Entrar</button>
+            </form>
+
+            <!-- Formulario REGISTRO -->
+            <form id="form-register" style="display:none;" onsubmit="submitRegister(event)">
+                <div style="margin-bottom:14px;">
+                    <label for="reg-name">Nombre completo</label>
+                    <input type="text" id="reg-name" placeholder="Tu nombre" autocomplete="name">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label for="reg-username">Nombre de usuario</label>
+                    <input type="text" id="reg-username" placeholder="usuario_único" autocomplete="username" required>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" placeholder="correo@ejemplo.com" autocomplete="email" required>
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label for="reg-pass">Contraseña <span style="color:#6c757d;">(mín. 6 caracteres)</span></label>
+                    <input type="password" id="reg-pass" placeholder="••••••••" autocomplete="new-password" required
+                        minlength="6">
+                </div>
+                <button type="submit" class="btn-primary" id="btn-register">Crear cuenta</button>
+            </form>
+        </div>
+        <p style="margin-top:16px; color:#adb5bd; font-size:0.8rem;">&copy; 2026 AEP CertMaster</p>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            document.getElementById('form-login').style.display = tab === 'login' ? '' : 'none';
+            document.getElementById('form-register').style.display = tab === 'register' ? '' : 'none';
+            document.getElementById('tab-login').className = 'tab' + (tab === 'login' ? ' active' : '');
+            document.getElementById('tab-register').className = 'tab' + (tab === 'register' ? ' active' : '');
+            document.getElementById('msg').style.display = 'none';
+        }
+
+        function showMsg(text, type) {
+            const el = document.getElementById('msg');
+            el.className = 'alert alert-' + type;
+            el.textContent = text;
+            el.style.display = '';
+        }
+
+        async function submitLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-login');
+            btn.disabled = true; btn.textContent = 'Entrando…';
+            try {
+                const res = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('login-user').value,
+                        password: document.getElementById('login-pass').value
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMsg('✅ Sesión iniciada. Redirigiendo…', 'success');
+                    setTimeout(() => window.location.href = '/', 800);
+                } else {
+                    showMsg('❌ ' + (data.error || 'Error al iniciar sesión'), 'error');
+                    btn.disabled = false; btn.textContent = 'Entrar';
+                }
+            } catch (err) {
+                showMsg('❌ Error de conexión', 'error');
+                btn.disabled = false; btn.textContent = 'Entrar';
+            }
+        }
+
+        async function submitRegister(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-register');
+            btn.disabled = true; btn.textContent = 'Creando cuenta…';
+            try {
+                const res = await fetch('/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: document.getElementById('reg-name').value,
+                        username: document.getElementById('reg-username').value,
+                        email: document.getElementById('reg-email').value,
+                        password: document.getElementById('reg-pass').value
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMsg('✅ Cuenta creada. Redirigiendo…', 'success');
+                    setTimeout(() => window.location.href = '/', 800);
+                } else {
+                    showMsg('❌ ' + (data.error || 'Error al registrarse'), 'error');
+                    btn.disabled = false; btn.textContent = 'Crear cuenta';
+                }
+            } catch (err) {
+                showMsg('❌ Error de conexión', 'error');
+                btn.disabled = false; btn.textContent = 'Crear cuenta';
+            }
+        }
+    </script>
+</body>
+
+</html>

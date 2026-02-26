@@ -1,0 +1,574 @@
+{% extends "base.html" %}
+{% block title %}Plan de Estudio - AEP CertMaster{% endblock %}
+
+{% block extra_head %}
+<style>
+    .page-header {
+        background: #0078d4;
+        color: white;
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+    }
+
+    .page-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+    }
+
+    .page-header p {
+        margin: 0;
+        opacity: 0.88;
+        font-size: 0.9rem;
+    }
+
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .overview-tile {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .overview-val {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0078d4;
+        margin-bottom: 3px;
+    }
+
+    .overview-lbl {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
+    .section-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    .section-card h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #212529;
+        margin: 0 0 16px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .timeline {
+        position: relative;
+        padding-left: 24px;
+    }
+
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #dee2e6;
+    }
+
+    .timeline-item {
+        position: relative;
+        margin-bottom: 24px;
+    }
+
+    .timeline-dot {
+        position: absolute;
+        left: -20px;
+        top: 4px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #dee2e6;
+        border: 2px solid white;
+    }
+
+    .timeline-dot.current {
+        background: #0078d4;
+    }
+
+    .timeline-dot.done {
+        background: #28a745;
+    }
+
+    .milestone-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .milestone-icon {
+        font-size: 1.2rem;
+    }
+
+    .milestone-meta {
+        font-size: 0.83rem;
+        color: #6c757d;
+    }
+
+    .timeline-week {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #0078d4;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 3px;
+    }
+
+    .timeline-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #212529;
+        margin-bottom: 5px;
+    }
+
+    .timeline-desc {
+        color: #6c757d;
+        font-size: 0.88rem;
+        margin-bottom: 10px;
+        line-height: 1.4;
+    }
+
+    .timeline-tasks {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .timeline-tasks li {
+        padding: 4px 0 4px 18px;
+        font-size: 0.85rem;
+        color: #495057;
+        position: relative;
+    }
+
+    .timeline-tasks li::before {
+        content: '→';
+        position: absolute;
+        left: 0;
+        color: #0078d4;
+    }
+
+    .quick-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn-action {
+        display: inline-block;
+        padding: 9px 20px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .btn-action.primary {
+        background: #0078d4;
+        color: white;
+    }
+
+    .btn-action.secondary {
+        border: 1px solid #0078d4;
+        color: #0078d4;
+        background: white;
+    }
+
+    .btn-action:hover {
+        opacity: 0.85;
+    }
+
+    .plan-manager-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .field-label {
+        display: block;
+        font-size: .85rem;
+        color: #495057;
+        margin-bottom: 6px;
+    }
+
+    .field-input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 8px;
+        font-size: .9rem;
+    }
+
+    .task-complete {
+        margin-right: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📚 Plan de Estudio Personalizado</h1>
+    <p id="student-info">Tu ruta hacia la certificación Microsoft</p>
+</div>
+
+<div class="overview-grid">
+    <div class="overview-tile">
+        <div class="overview-val" id="overall-progress">—</div>
+        <div class="overview-lbl">Progreso General</div>
+    </div>
+    <div class="overview-tile">
+        <div class="overview-val" id="weekly-hours">—</div>
+        <div class="overview-lbl">Horas Semanales</div>
+    </div>
+    <div class="overview-tile">
+        <div class="overview-val" id="certification-progress">—</div>
+        <div class="overview-lbl">Progreso Certificación</div>
+    </div>
+</div>
+
+<div class="section-card">
+    <h2>🗂️ Gestión de Planes</h2>
+    <div class="plan-manager-grid">
+        <div>
+            <label class="field-label" for="plan-selector">Plan activo</label>
+            <select id="plan-selector" class="field-input"></select>
+        </div>
+        <div>
+            <label class="field-label" for="plan-name-input">Nombre del plan</label>
+            <input id="plan-name-input" class="field-input" type="text" placeholder="Ej: MB-800 Abril 2026" />
+        </div>
+        <button id="save-plan-name-btn" class="btn-action secondary" style="cursor:pointer;">Guardar nombre</button>
+    </div>
+    <p id="plan-manager-status" style="margin-top:10px;font-size:.85rem;color:#6c757d;">
+        Puedes tener varios planes activos para distintas certificaciones.
+    </p>
+</div>
+
+<div class="section-card">
+    <h2>🗓️ Cronograma de Estudio</h2>
+    <div class="timeline" id="timeline-content">
+        <p style="color:#6c757d;font-style:italic;">Cargando tu cronograma personalizado…</p>
+    </div>
+</div>
+
+<div class="section-card" id="milestones-card" style="display:none;">
+    <h2>🏁 Hitos del Plan</h2>
+    <div id="milestones-content"></div>
+</div>
+
+<div class="section-card">
+    <h2>📧 Avisos por Email y Calendario</h2>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;max-width:700px;">
+        <div>
+            <label for="reminder-email" style="display:block;font-size:.85rem;color:#495057;margin-bottom:6px;">Email
+                para recordatorios</label>
+            <input id="reminder-email" type="email" placeholder="tu@email.com"
+                style="width:100%;padding:10px 12px;border:1px solid #ced4da;border-radius:8px;font-size:.9rem;" />
+        </div>
+        <button id="activate-reminders-btn" class="btn-action primary" style="border:none;cursor:pointer;">Activar
+            avisos</button>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+        <a id="download-calendar-link" href="#" class="btn-action secondary">📅 Descargar calendario (.ics)</a>
+    </div>
+    <p id="reminders-status" style="margin-top:10px;font-size:.85rem;color:#6c757d;">Puedes activar avisos y exportar tu
+        plan al calendario.</p>
+</div>
+
+<div class="section-card">
+    <h2>🔗 Acciones Rápidas</h2>
+    <div class="quick-actions">
+        <a href="/assessment" class="btn-action primary">📝 Hacer Evaluación</a>
+        <a href="/chat" class="btn-action secondary">💬 Chat con Agentes</a>
+        <a href="/progress" class="btn-action secondary">📊 Ver Progreso</a>
+        <a href="/" class="btn-action secondary">🏠 Volver al Inicio</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const SESSION_ID = '{{ session_id }}';
+    let CURRENT_PLAN_ID = SESSION_ID;
+    let CURRENT_STUDENT_ID = SESSION_ID;
+
+    function renderWeeks(weeks) {
+        if (!weeks || weeks.length === 0) {
+            return '<p style="color:#6c757d;">No hay sesiones de estudio registradas aún.</p>';
+        }
+        return weeks.map(week => {
+            const dotClass = week.is_current ? 'current' : (week.is_done ? 'done' : '');
+            const sessions = week.sessions || [];
+            // Usar el primer topic por semana como título de la semana, o agrupar tópicos únicos
+            const topics = [...new Set(sessions.map(s => s.module || s.topic).filter(Boolean))];
+            const weekTitle = topics.length > 0 ? topics[0] : `Módulo Semana ${week.week_number}`;
+            const weekDesc = topics.length > 1 ? topics.slice(1).join(' · ') : `${week.start_date} – ${week.end_date}`;
+            const taskItems = sessions.map(s => {
+                const check = s.completed ? '✅ ' : '';
+                const dur = s.duration_min ? ` (${s.duration_min}min)` : '';
+                const sid = s.session_id || '';
+                const checked = s.completed ? 'checked' : '';
+                return `<li>
+                    <input class="task-complete" type="checkbox" ${checked}
+                        onchange="toggleSessionCompleted('${sid}', this.checked)" />
+                    ${check}${s.topic}${dur}
+                </li>`;
+            }).join('');
+
+            return `
+            <div class="timeline-item">
+                <div class="timeline-dot ${dotClass}"></div>
+                <div class="timeline-week">Semana ${week.week_number}${week.is_current ? ' — ACTUAL' : ''}</div>
+                <div class="timeline-title">${weekTitle}</div>
+                <div class="timeline-desc">${weekDesc}</div>
+                <ul class="timeline-tasks">${taskItems}</ul>
+            </div>`;
+        }).join('');
+    }
+
+    function renderMilestones(milestones) {
+        if (!milestones || milestones.length === 0) return '';
+        return milestones.map(m => {
+            const icon = m.achieved ? '✅' : '🎯';
+            return `<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;">
+                <span style="font-size:1.2rem;">${icon}</span>
+                <div>
+                    <div style="font-weight:600;color:#212529;">${m.title}</div>
+                    <div style="font-size:0.83rem;color:#6c757d;">${m.target_date || ''} — ${m.description || ''}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function loadStudyPlan(planId = CURRENT_PLAN_ID) {
+        try {
+            const r = await fetch('/api/study-plan/' + planId);
+            if (!r.ok) {
+                document.getElementById('timeline-content').innerHTML =
+                    '<p style="color:#6c757d;font-style:italic;">No se encontró un plan de estudio generado aún. ' +
+                    'Ve al <a href="/chat">chat</a> y pide a los agentes que te creen un plan personalizado.</p>';
+                return;
+            }
+            const data = await r.json();
+            CURRENT_PLAN_ID = data.plan_id || planId;
+            CURRENT_STUDENT_ID = data.student_id || CURRENT_STUDENT_ID;
+
+            // Header
+            if (data.student_name) {
+                document.getElementById('student-info').textContent =
+                    data.student_name + ' — ' +
+                    (data.plan_name || data.certification || '') +
+                    ' | ' + (data.total_weeks || 0) + ' semanas | ' +
+                    (data.weekly_hours || 0) + 'h/semana';
+            }
+
+            document.getElementById('plan-name-input').value = data.plan_name || '';
+
+            // Tiles
+            if (data.overall_progress !== undefined)
+                document.getElementById('overall-progress').textContent = data.overall_progress + '%';
+            if (data.weekly_hours !== undefined)
+                document.getElementById('weekly-hours').textContent = data.weekly_hours + 'h';
+            if (data.certification_progress !== undefined)
+                document.getElementById('certification-progress').textContent = data.certification_progress + '%';
+
+            // Cronograma de semanas
+            document.getElementById('timeline-content').innerHTML = renderWeeks(data.weeks);
+
+            // Hitos
+            if (data.milestones && data.milestones.length > 0) {
+                document.getElementById('milestones-content').innerHTML = renderMilestones(data.milestones);
+                document.getElementById('milestones-card').style.display = '';
+            }
+
+        } catch (e) {
+            document.getElementById('timeline-content').innerHTML =
+                '<p style="color:#dc3545;">Error cargando el plan: ' + e.message + '</p>';
+        }
+    }
+
+    async function loadPlans() {
+        const status = document.getElementById('plan-manager-status');
+        try {
+            const r = await fetch('/api/study-plans/' + SESSION_ID);
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudo cargar la lista de planes.');
+            }
+
+            const selector = document.getElementById('plan-selector');
+            const plans = data.plans || [];
+            CURRENT_STUDENT_ID = data.student_id || CURRENT_STUDENT_ID;
+            if (plans.length === 0) {
+                selector.innerHTML = '<option value="">Sin planes</option>';
+                status.textContent = 'No hay planes guardados aún para este estudiante.';
+                return;
+            }
+
+            selector.innerHTML = plans.map(function (p) {
+                const label = (p.plan_name || p.certification || p.plan_id) +
+                    (p.certification ? ' · ' + p.certification : '');
+                const selected = (p.plan_id === CURRENT_PLAN_ID) ? 'selected' : '';
+                return '<option value="' + p.plan_id + '" ' + selected + '>' +
+                    label + '</option>';
+            }).join('');
+
+            if (!CURRENT_PLAN_ID || !plans.some(p => p.plan_id === CURRENT_PLAN_ID)) {
+                CURRENT_PLAN_ID = plans[0].plan_id;
+            }
+
+            selector.value = CURRENT_PLAN_ID;
+            status.textContent = 'Planes disponibles: ' + plans.length;
+        } catch (e) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Error cargando planes: ' + e.message;
+        }
+    }
+
+    async function renameCurrentPlan() {
+        const name = (document.getElementById('plan-name-input').value || '').trim();
+        const status = document.getElementById('plan-manager-status');
+        if (!CURRENT_PLAN_ID) {
+            status.style.color = '#dc3545';
+            status.textContent = 'No hay plan seleccionado.';
+            return;
+        }
+        if (!name) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Debes indicar un nombre para el plan.';
+            return;
+        }
+
+        try {
+            const r = await fetch('/api/study-plan/' + CURRENT_PLAN_ID + '/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan_name: name })
+            });
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudo renombrar el plan.');
+            }
+            status.style.color = '#1a7f37';
+            status.textContent = 'Nombre guardado correctamente.';
+            await loadPlans();
+            await loadStudyPlan(CURRENT_PLAN_ID);
+        } catch (e) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Error guardando nombre: ' + e.message;
+        }
+    }
+
+    async function toggleSessionCompleted(sessionId, completed) {
+        if (!CURRENT_PLAN_ID || !sessionId) return;
+        try {
+            const r = await fetch(
+                '/api/study-plan/' + CURRENT_PLAN_ID + '/sessions/' + sessionId + '/complete',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ completed: completed })
+                }
+            );
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudo actualizar la sesión.');
+            }
+            await loadStudyPlan(CURRENT_PLAN_ID);
+        } catch (e) {
+            const status = document.getElementById('plan-manager-status');
+            status.style.color = '#dc3545';
+            status.textContent = 'Error actualizando sesión: ' + e.message;
+            await loadStudyPlan(CURRENT_PLAN_ID);
+        }
+    }
+
+    async function loadEmailPreference() {
+        try {
+            const r = await fetch('/api/student/email/' + SESSION_ID);
+            if (!r.ok) return;
+            const data = await r.json();
+            const record = data.email_record || {};
+            if (record.email) {
+                document.getElementById('reminder-email').value = record.email;
+                document.getElementById('reminders-status').textContent = 'Avisos activos para: ' + record.email;
+            }
+        } catch (e) {
+            // silencioso
+        }
+    }
+
+    async function activateEmailReminders() {
+        const email = (document.getElementById('reminder-email').value || '').trim();
+        const status = document.getElementById('reminders-status');
+        if (!email) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Debes indicar un email válido.';
+            return;
+        }
+
+        const btn = document.getElementById('activate-reminders-btn');
+        btn.disabled = true;
+        const previous = btn.textContent;
+        btn.textContent = 'Activando...';
+        status.style.color = '#6c757d';
+        status.textContent = 'Activando avisos por email...';
+
+        try {
+            const r = await fetch('/api/study-plan/' + CURRENT_PLAN_ID + '/activate-email-reminders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudieron activar los avisos.');
+            }
+
+            status.style.color = '#1a7f37';
+            status.textContent = data.email_sent
+                ? 'Avisos activados y email enviado correctamente a ' + email + '.'
+                : 'Avisos activados para ' + email + '.';
+        } catch (e) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Error activando avisos: ' + e.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = previous;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        loadPlans().then(function () {
+            return loadStudyPlan(CURRENT_PLAN_ID);
+        });
+        loadEmailPreference();
+        document.getElementById('download-calendar-link').href = '/api/study-plan/' + CURRENT_PLAN_ID + '/calendar';
+        document.getElementById('activate-reminders-btn').addEventListener('click', activateEmailReminders);
+        document.getElementById('save-plan-name-btn').addEventListener('click', renameCurrentPlan);
+        document.getElementById('plan-selector').addEventListener('change', function (ev) {
+            CURRENT_PLAN_ID = ev.target.value;
+            document.getElementById('download-calendar-link').href = '/api/study-plan/' + CURRENT_PLAN_ID + '/calendar';
+            loadStudyPlan(CURRENT_PLAN_ID);
+        });
+    });
+</script>
+{% endblock %}

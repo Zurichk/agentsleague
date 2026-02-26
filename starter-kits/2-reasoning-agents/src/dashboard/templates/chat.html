@@ -1,0 +1,1313 @@
+﻿{% extends "base.html" %}
+{% block title %}Chat con Agentes - AEP CertMaster{% endblock %}
+
+{% block extra_head %}
+<!-- marked.js para renderizado enriquecido de markdown -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  .chat-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 20px;
+    align-items: start
+  }
+
+  @media(max-width:960px) {
+    .chat-layout {
+      grid-template-columns: 1fr
+    }
+  }
+
+  .chat-panel {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    overflow: hidden
+  }
+
+  .chat-header {
+    background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
+    color: white;
+    padding: 16px 20px
+  }
+
+  .chat-header h1 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 3px 0
+  }
+
+  .chat-header p {
+    margin: 0;
+    opacity: .85;
+    font-size: .82rem
+  }
+
+  .chat-messages {
+    height: 520px;
+    overflow-y: auto;
+    padding: 16px;
+    background: #f4f6f9;
+    scroll-behavior: smooth
+  }
+
+  /* Usuario */
+  .msg-user {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px
+  }
+
+  .msg-user .bubble {
+    background: #0078d4;
+    color: white;
+    border-radius: 18px 18px 4px 18px;
+    padding: 10px 16px;
+    max-width: 70%;
+    font-size: .92rem;
+    line-height: 1.5
+  }
+
+  /* Agente */
+  .msg-agent {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16px
+  }
+
+  .agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin-bottom: 6px;
+    align-self: flex-start;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .07)
+  }
+
+  .badge-name {
+    font-size: .8rem;
+    font-weight: 700;
+    color: #0078d4
+  }
+
+  .badge-mode {
+    font-size: .68rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px
+  }
+
+  .badge-mode-azure {
+    background: #dff0ff;
+    color: #0063b1
+  }
+
+  .badge-tool {
+    font-size: .68rem;
+    background: #e8f4e8;
+    color: #1a7a1a;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid #c3e6c3
+  }
+
+  .badge-tokens {
+    font-size: .68rem;
+    color: #868e96
+  }
+
+  .agent-bubble {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px 18px 18px 18px;
+    padding: 12px 16px;
+    max-width: 88%;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
+    font-size: .91rem;
+    line-height: 1.6;
+    color: #212529
+  }
+
+  .agent-bubble h1,
+  .agent-bubble h2,
+  .agent-bubble h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0078d4;
+    margin: 10px 0 4px 0
+  }
+
+  .agent-bubble h4,
+  .agent-bubble h5 {
+    font-size: .9rem;
+    font-weight: 600;
+    color: #212529;
+    margin: 8px 0 3px 0
+  }
+
+  .agent-bubble p {
+    margin: 0 0 6px 0
+  }
+
+  .agent-bubble ul,
+  .agent-bubble ol {
+    padding-left: 20px;
+    margin: 4px 0 8px 0
+  }
+
+  .agent-bubble li {
+    margin-bottom: 3px
+  }
+
+  .agent-bubble code {
+    background: #f1f3f5;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: .82rem;
+    font-family: monospace;
+    color: #c7254e
+  }
+
+  .agent-bubble pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: .82rem;
+    margin: 8px 0
+  }
+
+  .agent-bubble pre code {
+    color: inherit;
+    background: transparent;
+    padding: 0
+  }
+
+  .agent-bubble strong {
+    color: #0078d4
+  }
+
+  .agent-bubble hr {
+    border: none;
+    border-top: 1px solid #dee2e6;
+    margin: 10px 0
+  }
+
+  .agent-bubble blockquote {
+    border-left: 3px solid #0078d4;
+    padding-left: 10px;
+    color: #6c757d;
+    margin: 6px 0;
+    font-style: italic
+  }
+
+  .agent-bubble table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .83rem;
+    margin: 8px 0
+  }
+
+  .agent-bubble th {
+    background: #f1f3f5;
+    font-weight: 600;
+    padding: 5px 8px;
+    border: 1px solid #dee2e6;
+    text-align: left
+  }
+
+  .agent-bubble td {
+    padding: 4px 8px;
+    border: 1px solid #dee2e6
+  }
+
+  /* Typing */
+  .typing-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6c757d;
+    font-size: .83rem;
+    padding: 6px 16px
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    gap: 4px
+  }
+
+  .typing-dots span {
+    width: 7px;
+    height: 7px;
+    background: #0078d4;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: .2s
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: .4s
+  }
+
+  @keyframes bounce {
+
+    0%,
+    80%,
+    100% {
+      transform: translateY(0)
+    }
+
+    40% {
+      transform: translateY(-6px)
+    }
+  }
+
+  /* Active agent bar */
+  .active-agent-bar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: #fff3cd;
+    border-bottom: 1px solid #ffc107;
+    padding: 6px 16px;
+    font-size: .82rem;
+    color: #856404
+  }
+
+  .active-agent-bar.visible {
+    display: flex
+  }
+
+  .active-pulse {
+    width: 8px;
+    height: 8px;
+    background: #ffc107;
+    border-radius: 50%;
+    animation: pulse 1s infinite
+  }
+
+  @keyframes pulse {
+
+    0%,
+    100% {
+      opacity: 1
+    }
+
+    50% {
+      opacity: .3
+    }
+  }
+
+  /* Footer */
+  .chat-footer {
+    border-top: 1px solid #dee2e6;
+    padding: 12px;
+    background: white;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end
+  }
+
+  .chat-textarea {
+    flex: 1;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: .92rem;
+    resize: none;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #212529;
+    background: white;
+    min-height: 52px
+  }
+
+  .chat-textarea:focus {
+    border-color: #0078d4;
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, .18);
+    outline: none
+  }
+
+  .btn-send {
+    background: #0078d4;
+    color: white;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-size: .92rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .2s
+  }
+
+  .btn-send:hover {
+    background: #005a9e
+  }
+
+  .btn-send:disabled {
+    background: #ced4da;
+    cursor: not-allowed
+  }
+
+  /* Side */
+  .side-panel {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    overflow: hidden
+  }
+
+  .side-panel-header {
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 11px 16px;
+    font-weight: 600;
+    font-size: .88rem;
+    color: #212529
+  }
+
+  .side-inner {
+    padding: 12px 14px
+  }
+
+  .agent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background .15s
+  }
+
+  .agent-row:last-child {
+    border-bottom: none
+  }
+
+  .agent-row.active {
+    background: #e8f4ff;
+    border-radius: 6px;
+    padding: 7px 6px
+  }
+
+  .agent-emoji {
+    font-size: 1.25rem;
+    width: 26px;
+    text-align: center
+  }
+
+  .agent-info-name {
+    font-size: .84rem;
+    font-weight: 600;
+    color: #212529
+  }
+
+  .agent-info-status {
+    font-size: .72rem;
+    color: #6c757d
+  }
+
+  .agent-info-status.running {
+    color: #0078d4;
+    font-weight: 600
+  }
+
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: .81rem
+  }
+
+  .metric-row:last-child {
+    border-bottom: none
+  }
+
+  .metric-key {
+    color: #6c757d
+  }
+
+  .metric-val {
+    font-weight: 600;
+    color: #212529
+  }
+
+  .activity-entry {
+    font-size: .76rem;
+    padding: 4px 0;
+    border-bottom: 1px solid #f0f0f0;
+    color: #495057
+  }
+
+  .activity-entry:last-child {
+    border-bottom: none
+  }
+
+  .activity-agent {
+    font-weight: 700;
+    color: #0078d4
+  }
+
+  .activity-time {
+    color: #adb5bd;
+    margin-left: 4px
+  }
+
+  /* ===== Assessment Modal ===== */
+  .assess-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .55);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px
+  }
+
+  .assess-overlay.open {
+    display: flex
+  }
+
+  .assess-box {
+    background: white;
+    border-radius: 12px;
+    width: min(740px, 100%);
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, .28)
+  }
+
+  .assess-head {
+    background: linear-gradient(135deg, #0078d4, #005a9e);
+    color: white;
+    padding: 18px 24px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px
+  }
+
+  .assess-head h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700
+  }
+
+  .assess-head p {
+    margin: 3px 0 0;
+    font-size: .81rem;
+    opacity: .88
+  }
+
+  .assess-close {
+    background: rgba(255, 255, 255, .2);
+    border: none;
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    line-height: 30px;
+    text-align: center
+  }
+
+  .assess-close:hover {
+    background: rgba(255, 255, 255, .35)
+  }
+
+  .assess-progress {
+    height: 5px;
+    background: #e9ecef;
+    flex-shrink: 0
+  }
+
+  .assess-progress-bar {
+    height: 100%;
+    background: #28a745;
+    transition: width .35s;
+    width: 0
+  }
+
+  .assess-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px
+  }
+
+  .assess-question {
+    margin-bottom: 28px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #eee
+  }
+
+  .assess-question:last-child {
+    border-bottom: none;
+    margin-bottom: 0
+  }
+
+  .assess-q-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px
+  }
+
+  .assess-q-num {
+    background: #0078d4;
+    color: white;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .8rem;
+    font-weight: 700
+  }
+
+  .assess-q-meta {
+    font-size: .73rem;
+    color: #6c757d;
+    background: #f4f4f4;
+    padding: 2px 9px;
+    border-radius: 20px
+  }
+
+  .assess-q-text {
+    font-size: .93rem;
+    color: #212529;
+    line-height: 1.55;
+    margin-bottom: 12px;
+    font-weight: 500
+  }
+
+  .assess-options {
+    display: flex;
+    flex-direction: column;
+    gap: 7px
+  }
+
+  .assess-opt-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 13px;
+    border: 1.5px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .15s;
+    font-size: .88rem;
+    color: #495057
+  }
+
+  .assess-opt-label:hover {
+    border-color: #0078d4;
+    background: #f0f7ff
+  }
+
+  .assess-opt-label.selected {
+    border-color: #0078d4;
+    background: #e8f4ff;
+    color: #0078d4;
+    font-weight: 500
+  }
+
+  .assess-opt-label input[type=radio] {
+    margin-top: 2px;
+    accent-color: #0078d4;
+    flex-shrink: 0
+  }
+
+  .assess-opt-letter {
+    font-weight: 700;
+    color: #0078d4;
+    min-width: 18px;
+    flex-shrink: 0
+  }
+
+  .assess-foot {
+    padding: 14px 24px;
+    border-top: 1px solid #dee2e6;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0
+  }
+
+  .assess-foot-info {
+    font-size: .82rem;
+    color: #6c757d
+  }
+
+  .btn-assess-submit {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 28px;
+    border-radius: 8px;
+    font-size: .92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s
+  }
+
+  .btn-assess-submit:hover {
+    background: #1e7e34
+  }
+
+  .btn-assess-submit:disabled {
+    background: #ced4da;
+    cursor: not-allowed
+  }
+
+  .btn-assess-skip {
+    background: none;
+    border: 1px solid #ced4da;
+    color: #6c757d;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: .88rem;
+    cursor: pointer
+  }
+
+  .btn-assess-skip:hover {
+    background: #f0f0f0
+  }
+
+  .assess-open-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: .82rem;
+    cursor: pointer;
+    font-weight: 600
+  }
+
+  .assess-open-btn:hover {
+    background: #ffe69c
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-layout">
+
+  <!-- Chat Panel -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <h1>&#x1F4AC; Chat con el Sistema Multi-Agente</h1>
+      <p>AEP CertMaster &#xB7; Orchestrator + 6 Agentes Especializados &#xB7; Azure OpenAI</p>
+    </div>
+    <div class="active-agent-bar" id="active-agent-bar">
+      <div class="active-pulse"></div>
+      <span id="active-agent-text">Procesando...</span>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+      <div class="msg-agent">
+        <div class="agent-badge">
+          <span class="badge-name">&#x1F9E0; Orchestrator Agent</span>
+          <span class="badge-mode badge-mode-azure">🔵 Azure OpenAI</span>
+        </div>
+        <div class="agent-bubble">
+          Hola! Coordino <strong>6 agentes especializados</strong> para guiarte en tu certificacion Microsoft.<br><br>
+          <ul>
+            <li>&#x1F3DB;&#xFE0F; <strong>Curator</strong> &mdash; Gestor de itinerario de aprendizaje</li>
+            <li>&#x1F4DA; <strong>Study Plan</strong> &mdash; Plan semana a semana</li>
+            <li>&#x1F3AF; <strong>Engagement</strong> &mdash; Motivación y recordatorios</li>
+            <li>&#x1F4DD; <strong>Assessment</strong> &mdash; Evaluaciones adaptativas</li>
+            <li>&#x1F50D; <strong>Critic</strong> &mdash; Análisis de brechas</li>
+            <li>&#x1F393; <strong>Cert Advisor</strong> &mdash; Roadmap de certificación</li>
+          </ul>
+          Que certificacion Microsoft te interesa? (ej. <em>"Quiero prepararme para AZ-900"</em>)
+        </div>
+      </div>
+    </div>
+    <div id="typing-indicator" style="display:none;">
+      <div class="typing-row">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        <span id="typing-agent-text">El sistema esta procesando...</span>
+      </div>
+    </div>
+    <div class="chat-footer">
+      <textarea class="chat-textarea" id="message-input"
+        placeholder="Escribe tu mensaje... (Enter para enviar, Shift+Enter nueva linea)" rows="2"></textarea>
+      <button class="btn-send" id="send-button" type="button">Enviar &#x2192;</button>
+    </div>
+  </div>
+
+  <!-- Side Panel -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <div class="side-panel">
+      <div class="side-panel-header">&#x1F916; Agentes del Sistema</div>
+      <div class="side-inner" id="agents-list">
+        <div class="agent-row" id="row-orchestrator">
+          <div class="agent-emoji">&#x1F9E0;</div>
+          <div>
+            <div class="agent-info-name">Orchestrator</div>
+            <div class="agent-info-status" id="st-orchestrator">Coordinador principal</div>
+          </div>
+        </div>
+        <div class="agent-row" id="row-curator">
+          <div class="agent-emoji">&#x1F3DB;&#xFE0F;</div>
+          <div>
+            <div class="agent-info-name">Curator</div>
+            <div class="agent-info-status" id="st-curator">microsoft_learn_search</div>
+          </div>
+        </div>
+        <div class="agent-row" id="row-study_plan">
+          <div class="agent-emoji">&#x1F4DA;</div>
+          <div>
+            <div class="agent-info-name">Study Plan</div>
+            <div class="agent-info-status" id="st-study_plan">calendar &middot; milestones</div>
+          </div>
+        </div>
+        <div class="agent-row" id="row-engagement">
+          <div class="agent-emoji">&#x1F3AF;</div>
+          <div>
+            <div class="agent-info-name">Engagement</div>
+            <div class="agent-info-status" id="st-engagement">email reminders &middot; motivation</div>
+          </div>
+        </div>
+        <div class="agent-row" id="row-assessment">
+          <div class="agent-emoji">&#x1F4DD;</div>
+          <div>
+            <div class="agent-info-name">Assessment</div>
+            <div class="agent-info-status" id="st-assessment">question_gen &middot; adaptive</div>
+          </div>
+        </div>
+        <div class="agent-row" id="row-critic">
+          <div class="agent-emoji">&#x1F50D;</div>
+          <div>
+            <div class="agent-info-name">Critic</div>
+            <div class="agent-info-status" id="st-critic">gap_analyzer &middot; benchmark</div>
+          </div>
+        </div>
+        <div class="agent-row" id="row-cert_advisor">
+          <div class="agent-emoji">&#x1F393;</div>
+          <div>
+            <div class="agent-info-name">Cert Advisor</div>
+            <div class="agent-info-status" id="st-cert_advisor">roadmap &middot; roi</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="side-panel-header">&#x1F4CA; Metricas de Sesion</div>
+      <div class="side-inner">
+        <div class="metric-row"><span class="metric-key">Interacciones</span><span class="metric-val"
+            id="m-interactions">0</span></div>
+        <div class="metric-row"><span class="metric-key">Tasa Exito</span><span class="metric-val"
+            id="m-success">&mdash;</span></div>
+        <div class="metric-row"><span class="metric-key">T. Promedio</span><span class="metric-val"
+            id="m-avgtime">&mdash;</span></div>
+        <div class="metric-row"><span class="metric-key">Tokens Totales</span><span class="metric-val"
+            id="m-tokens">0</span></div>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="side-panel-header">&#x1F4CB; Actividad Reciente</div>
+      <div class="side-inner" id="activity-log" style="max-height:180px;overflow-y:auto;">
+        <div class="activity-entry" style="color:#adb5bd;font-style:italic;">Sin actividad aun</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Assessment Modal ===== -->
+<div class="assess-overlay" id="assess-overlay">
+  <div class="assess-box">
+    <div class="assess-head">
+      <div>
+        <h2>&#x1F4DD; Evaluaci&#xF3;n Adaptativa</h2>
+        <p id="assess-subtitle">Responde las preguntas y env&#xED;a tus respuestas</p>
+      </div>
+      <button class="assess-close" id="assess-close" title="Cancelar">&times;</button>
+    </div>
+    <div class="assess-progress">
+      <div class="assess-progress-bar" id="assess-pbar"></div>
+    </div>
+    <div class="assess-body" id="assess-body"></div>
+    <div class="assess-foot">
+      <span class="assess-foot-info" id="assess-foot-info">Selecciona una opci&#xF3;n por pregunta</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn-assess-skip" id="assess-skip">Responder en el chat</button>
+        <button class="btn-assess-submit" id="assess-submit" disabled>Enviar Respuestas</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+
+  const AGENT_META = {
+    orchestrator: { icon: '🧠', label: 'Orchestrator Agent', rowId: 'orchestrator' },
+    curator: { icon: '🏛️', label: 'Curator Agent', rowId: 'curator' },
+    study_plan: { icon: '📚', label: 'Study Plan Agent', rowId: 'study_plan' },
+    engagement: { icon: '🎯', label: 'Engagement Agent', rowId: 'engagement' },
+    assessment: { icon: '📝', label: 'Assessment Agent', rowId: 'assessment' },
+    critic: { icon: '🔍', label: 'Critic Agent', rowId: 'critic' },
+    cert_advisor: { icon: '🎓', label: 'Cert Advisor Agent', rowId: 'cert_advisor' }
+  };
+
+  const chatMessages = document.getElementById('chat-messages');
+  const messageInput = document.getElementById('message-input');
+  const sendButton = document.getElementById('send-button');
+  const typingIndicator = document.getElementById('typing-indicator');
+  const typingAgentTxt = document.getElementById('typing-agent-text');
+  const activeBar = document.getElementById('active-agent-bar');
+  const activeBarText = document.getElementById('active-agent-text');
+  const activityLog = document.getElementById('activity-log');
+  const socket = io({ transports: ['websocket', 'polling'] });
+  let pendingTimer = null;
+  let sessionTokens = 0;
+  const TIMEOUT_MS = 120000; // Assessment puede tardar ~60s en LLM real
+
+  function detectAgentKey(name) {
+    if (!name) return 'orchestrator';
+    const n = name.toLowerCase();
+    if (n.includes('curator')) return 'curator';
+    if (n.includes('study')) return 'study_plan';
+    if (n.includes('engagement')) return 'engagement';
+    if (n.includes('assessment')) return 'assessment';
+    if (n.includes('critic')) return 'critic';
+    if (n.includes('cert')) return 'cert_advisor';
+    return 'orchestrator';
+  }
+
+  function buildBadge(agentKey, agentName, mode, tools, tokens) {
+    const meta = AGENT_META[agentKey] || { icon: '🤖', label: agentName || 'Sistema' };
+    const label = agentName || meta.label;
+    const modeClass = 'badge-mode-azure';
+    const modeLabel = '🔵 Azure OpenAI';
+    const tokStr = (tokens && tokens.total_tokens) ? '<span class="badge-tokens">' + tokens.total_tokens + ' tok</span>' : '';
+    let toolBadges = '';
+    if (tools && tools.length) {
+      toolBadges = tools.slice(0, 3).map(t => '<span class="badge-tool">' + t + '</span>').join('');
+      if (tools.length > 3) toolBadges += '<span class="badge-tool">+' + (tools.length - 3) + '</span>';
+    }
+    return '<div class="agent-badge"><span class="badge-name">' + meta.icon + ' ' + label + '</span>' +
+      '<span class="badge-mode ' + modeClass + '">' + modeLabel + '</span>' +
+      toolBadges + tokStr + '</div>';
+  }
+
+  // ---- Assessment question parser ----
+  function parseAssessmentQuestions(text) {
+    const questions = [];
+    // Match **Pregunta N** or plain "Pregunta N" blocks (from Orchestrator aggregated output)
+    const re = /(?:\*{0,2})Pregunta\s+(\d+)(?:\*{0,2})([^\n]*)\n([\s\S]*?)(?=(?:\*{0,2})Pregunta\s+\d+(?:\*{0,2})|###\s|$)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const num = parseInt(m[1]);
+      const meta = m[2].trim().replace(/^[\s\[]+|[\]\s]+$/g, '');
+      const block = m[3];
+      const lines = block.split('\n');
+      let questionText = '';
+      const options = [];
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t) continue;
+        // Hide answer hints: lines starting with 💡 or > 💡
+        if (/^>?\s*💡/.test(t) || t.startsWith('> ') || t.startsWith('&gt;')) continue;
+        // Detect options: starts with a letter followed by ) or .
+        if (/^[a-dA-D][).]/.test(t)) {
+          const parts = t.split(/\s{2,}/);
+          for (const p of parts) {
+            const op = p.trim();
+            if (/^[a-dA-D][).]/.test(op)) options.push(op);
+          }
+        } else if (!questionText && t.length > 8) {
+          questionText = t.replace(/^[*_]+|[*_]+$/g, ''); // strip markdown bold/italic
+        }
+      }
+      if (questionText) questions.push({ num, meta, text: questionText, options });
+    }
+    return questions;
+  }
+
+  // ---- Human-in-the-Loop quick-reply detection ----
+  function detectHITLOptions(text) {
+    // Find all 'option' tokens after "responde"
+    const opts = [];
+    const re = /responde\s+'([^']+)'/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) opts.push(m[1]);
+    // Also pick up single last word alternatives separated by ' o '
+    return [...new Set(opts)];
+  }
+
+  function getAssessmentIntro(text) {
+    // Return text before the first **Pregunta or ### Preguntas section
+    const idx1 = text.indexOf('**Pregunta');
+    const idx2 = text.indexOf('### \u{1F4CA} Preguntas');
+    const cut = Math.min(idx1 >= 0 ? idx1 : 1e9, idx2 >= 0 ? idx2 : 1e9);
+    if (cut >= 1e9) return text;
+    const intro = text.substring(0, cut).trim();
+    return intro + '\n\n> \u{1F4DD} **Las preguntas se han abierto en el panel de evaluaci\xF3n.** Resp\xF3ndelas y haz clic en \'Enviar Respuestas\'';
+  }
+
+  // ---- Assessment modal logic ----
+  let _assessQuestions = [];
+
+  function showAssessmentModal(questions) {
+    _assessQuestions = questions;
+    const body = document.getElementById('assess-body');
+    const subtitle = document.getElementById('assess-subtitle');
+    subtitle.textContent = questions.length + ' pregunta' + (questions.length !== 1 ? 's' : '') + ' \u2014 selecciona una opci\xF3n por pregunta';
+    body.innerHTML = '';
+    questions.forEach(function (q, qi) {
+      const div = document.createElement('div');
+      div.className = 'assess-question';
+      const optHtml = q.options.length
+        ? '<div class="assess-options">' + q.options.map(function (opt, oi) {
+          const letter = opt.charAt(0).toUpperCase();
+          const text = opt.substring(2).trim();
+          const rid = 'aq' + qi + '_' + oi;
+          return '<label class="assess-opt-label" id="lbl_' + rid + '">' +
+            '<input type="radio" name="q' + qi + '" value="' + letter + '" id="' + rid + '">' +
+            '<span class="assess-opt-letter">' + letter + ')</span>' +
+            '<span>' + escHtml(text) + '</span></label>';
+        }).join('') + '</div>'
+        : '<div class="assess-options"><textarea class="chat-textarea" style="min-height:70px;width:100%" placeholder="Escribe tu respuesta..." id="ta_q' + qi + '"></textarea></div>';
+      div.innerHTML =
+        '<div class="assess-q-header"><span class="assess-q-num">' + q.num + '</span>' +
+        (q.meta ? '<span class="assess-q-meta">' + escHtml(q.meta) + '</span>' : '') + '</div>' +
+        '<div class="assess-q-text">' + escHtml(q.text) + '</div>' + optHtml;
+      body.appendChild(div);
+    });
+
+    // Wire radio change to update UI
+    body.addEventListener('change', function (e) {
+      if (e.target.type !== 'radio') return;
+      const name = e.target.name;
+      body.querySelectorAll('label[id^="lbl_"]').forEach(function (lbl) {
+        const inp = lbl.querySelector('input[name="' + name + '"]');
+        if (inp) lbl.classList.toggle('selected', inp.checked);
+      });
+      updateAssessProgress();
+    });
+
+    updateAssessProgress();
+    document.getElementById('assess-overlay').classList.add('open');
+  }
+
+  function updateAssessProgress() {
+    const body = document.getElementById('assess-body');
+    const total = _assessQuestions.length;
+    let answered = 0;
+    _assessQuestions.forEach(function (q, qi) {
+      const checked = body.querySelector('input[name="q' + qi + '"]:checked');
+      const ta = body.querySelector('#ta_q' + qi);
+      if (checked || (ta && ta.value.trim())) answered++;
+    });
+    const pct = total ? (answered / total * 100) : 0;
+    document.getElementById('assess-pbar').style.width = pct + '%';
+    document.getElementById('assess-foot-info').textContent = answered + '/' + total + ' respondidas';
+    document.getElementById('assess-submit').disabled = (answered < total);
+  }
+
+  function collectAssessAnswers() {
+    const body = document.getElementById('assess-body');
+    const parts = _assessQuestions.map(function (q, qi) {
+      const checked = body.querySelector('input[name="q' + qi + '"]:checked');
+      if (checked) return 'P' + q.num + ': ' + checked.value + ')';
+      const ta = body.querySelector('#ta_q' + qi);
+      return 'P' + q.num + ': ' + (ta ? ta.value.trim() : '?');
+    });
+    return '\uD83D\uDCDD Mis respuestas a la evaluaci\xF3n:\n' + parts.join('  |  ');
+  }
+
+  document.getElementById('assess-submit').addEventListener('click', function () {
+    const msg = collectAssessAnswers();
+    document.getElementById('assess-overlay').classList.remove('open');
+    // Marcar que el usuario acaba de enviar sus respuestas — la siguiente
+    // respuesta del agente es un resultado de evaluacion, no preguntas nuevas.
+    window._quizSubmitted = true;
+    // Inject as user message and send
+    messageInput.value = msg;
+    sendMessage();
+  });
+
+  document.getElementById('assess-close').addEventListener('click', function () {
+    document.getElementById('assess-overlay').classList.remove('open');
+  });
+
+  document.getElementById('assess-skip').addEventListener('click', function () {
+    document.getElementById('assess-overlay').classList.remove('open');
+  });
+
+  // ---- addMessage (with assessment detection + HITL quick-reply) ----
+
+  // Devuelve true si el contenido es un RESULTADO de evaluacion ya corregida.
+  // Se basa en un flag que se activa cuando el usuario envia sus respuestas
+  // desde el modal — evita que la heuristica de texto dispare false-positives
+  // en la primera presentacion de preguntas (que tambien incluye un veredicto estimado).
+  window._quizSubmitted = false;
+  function isEvaluationResult(text) {
+    if (window._quizSubmitted) {
+      window._quizSubmitted = false; // consumir el flag
+      return true;
+    }
+    if (!text) return false;
+    // Unico caso seguro via texto: la respuesta lleva el prefijo que el
+    // usuario envio desde el modal (collectAssessAnswers lo antepone).
+    return text.toLowerCase().includes('\ud83d\udcdd mis respuestas a la evaluaci');
+  }
+
+  function addMessage(content, type, agentName, phase, tokens, tools, mode) {
+    if (type === 'user') {
+      const d = document.createElement('div');
+      d.className = 'msg-user';
+      d.innerHTML = '<div class="bubble">' + escHtml(content) + '</div>';
+      chatMessages.appendChild(d);
+    } else {
+      const key = detectAgentKey(agentName);
+      const w = document.createElement('div');
+      w.className = 'msg-agent';
+
+      // Detectar preguntas, pero no mostrar boton/modal si es un resultado de evaluacion
+      const qs = parseAssessmentQuestions(content || '');
+      const isEvalResult = isEvaluationResult(content || '');
+      const showQuizUI = qs.length > 0 && !isEvalResult;
+
+      const displayContent = showQuizUI ? getAssessmentIntro(content || '') : (content || '');
+      w.innerHTML = buildBadge(key, agentName, mode, tools, tokens) +
+        '<div class="agent-bubble">' + marked.parse(displayContent) + '</div>';
+
+      // Boton de apertura SOLO para cuestionarios nuevos
+      if (showQuizUI) {
+        const btn = document.createElement('button');
+        btn.className = 'assess-open-btn';
+        btn.innerHTML = '\u{1F4DD} Abrir panel de evaluaci\xF3n (' + qs.length + ' preguntas)';
+        btn.onclick = function () { showAssessmentModal(qs); };
+        w.appendChild(btn);
+      }
+
+      // HITL quick-reply buttons (e.g. "responde 'sí' o 'continuar'")
+      const hitlOpts = detectHITLOptions(content || '');
+      if (hitlOpts.length > 0) {
+        const bar = document.createElement('div');
+        bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;';
+        hitlOpts.forEach(function (opt) {
+          const b = document.createElement('button');
+          b.style.cssText = 'background:#0078d4;color:white;border:none;padding:7px 16px;border-radius:20px;font-size:.84rem;font-weight:600;cursor:pointer;';
+          b.textContent = opt;
+          b.onmouseover = function () { b.style.background = '#005a9e'; };
+          b.onmouseout = function () { b.style.background = '#0078d4'; };
+          b.onclick = function () {
+            messageInput.value = opt;
+            sendMessage();
+          };
+          bar.appendChild(b);
+        });
+        w.appendChild(bar);
+      }
+
+      chatMessages.appendChild(w);
+      if (tokens && tokens.total_tokens) {
+        sessionTokens += (tokens.total_tokens || 0);
+        document.getElementById('m-tokens').textContent = sessionTokens.toLocaleString();
+      }
+
+      // Auto-open modal SOLO si es cuestionario nuevo, no resultado de evaluacion
+      if (showQuizUI) {
+        setTimeout(function () { showAssessmentModal(qs); }, 400);
+      }
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  let lastRow = null;
+  function setAgentActive(key, label) {
+    if (lastRow) {
+      document.getElementById('row-' + lastRow)?.classList.remove('active');
+      const st = document.getElementById('st-' + lastRow);
+      if (st) st.classList.remove('running');
+    }
+    if (key) {
+      document.getElementById('row-' + key)?.classList.add('active');
+      const st = document.getElementById('st-' + key);
+      if (st) { st.innerHTML = '▶ Ejecutando...'; st.classList.add('running'); }
+      const meta = AGENT_META[key] || { icon: '🤖' };
+      activeBarText.innerHTML = meta.icon + ' ' + (label || key) + ' procesando...';
+      activeBar.classList.add('visible');
+      typingAgentTxt.textContent = (label || key) + ' esta generando respuesta...';
+    } else {
+      activeBar.classList.remove('visible');
+      typingAgentTxt.textContent = 'El sistema esta procesando...';
+    }
+    lastRow = key || null;
+  }
+
+  const STATUS_DEFAULTS = {
+    orchestrator: 'Coordinador principal', curator: 'microsoft_learn_search',
+    study_plan: 'calendar &middot; milestones', engagement: 'email reminders &middot; motivation',
+    assessment: 'question_gen &middot; adaptive', critic: 'gap_analyzer &middot; benchmark',
+    cert_advisor: 'roadmap &middot; roi'
+  };
+
+  function clearAgentActive() {
+    setAgentActive(null, null);
+    Object.entries(STATUS_DEFAULTS).forEach(([k, v]) => {
+      const el = document.getElementById('st-' + k);
+      if (el) { el.innerHTML = v; el.classList.remove('running'); }
+    });
+  }
+
+  function addActivity(agentName, action) {
+    const ph = activityLog.querySelector('[style*="italic"]');
+    if (ph) ph.remove();
+    const d = document.createElement('div');
+    d.className = 'activity-entry';
+    const now = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    d.innerHTML = '<span class="activity-agent">' + agentName + '</span>: ' + action +
+      '<span class="activity-time">' + now + '</span>';
+    activityLog.appendChild(d);
+    activityLog.scrollTop = activityLog.scrollHeight;
+  }
+
+  async function sendViaHttp(message) {
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Error del servidor');
+      typingIndicator.style.display = 'none';
+      sendButton.disabled = false;
+      clearAgentActive();
+      addMessage(data.response, 'agent', data.agent_name || 'OrchestratorAgent',
+        data.phase, data.tokens, data.tools_used, data.mode);
+      addActivity(data.agent_name || 'Orchestrator', 'Respuesta recibida (HTTP)');
+      document.getElementById('m-interactions').textContent =
+        String(parseInt(document.getElementById('m-interactions').textContent || '0') + 1);
+    } catch (err) {
+      typingIndicator.style.display = 'none';
+      sendButton.disabled = false;
+      clearAgentActive();
+      addMessage('Error: ' + err.message, 'agent');
+    }
+  }
+
+  function sendMessage() {
+    const msg = messageInput.value.trim();
+    if (!msg) return;
+    addMessage(msg, 'user');
+    messageInput.value = '';
+    typingIndicator.style.display = 'block';
+    sendButton.disabled = true;
+    setAgentActive('orchestrator', 'Orchestrator Agent');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (!socket.connected) {
+      sendViaHttp(msg);
+    } else {
+      socket.emit('chat_message', { message: msg });
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(() => sendViaHttp(msg), TIMEOUT_MS);
+    }
+  }
+
+  sendButton.addEventListener('click', sendMessage);
+  messageInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  socket.on('chat_response', function (d) {
+    typingIndicator.style.display = 'none'; sendButton.disabled = false;
+    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+    clearAgentActive();
+    addMessage(d.response, 'agent', d.agent_name, d.phase, d.tokens, d.tools_used, d.mode);
+    addActivity(d.agent_name || 'Orchestrator', 'Respuesta completada');
+    document.getElementById('m-interactions').textContent =
+      String(parseInt(document.getElementById('m-interactions').textContent || '0') + 1);
+  });
+
+  socket.on('response', function (d) {
+    typingIndicator.style.display = 'none'; sendButton.disabled = false;
+    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+    clearAgentActive();
+    addMessage(d.response, 'agent', d.agent_name || 'OrchestratorAgent', d.phase, d.tokens, d.tools_used, d.mode);
+    addActivity('Orchestrator', 'Respuesta completada');
+  });
+
+  socket.on('agent_active', function (d) {
+    const key = detectAgentKey(d.agent_name);
+    setAgentActive(key, d.agent_name);
+    addActivity(d.agent_name, 'Inicio de ejecucion');
+  });
+
+  // Respuesta parcial: se muestra en el chat en tiempo real, sin esperar
+  // a que todos los agentes del sub-workflow terminen.
+  socket.on('partial_response', function (d) {
+    if (!d || !d.content) return;
+    addMessage(d.content, 'agent', null, null, null, null, null);
+    if (d.loading_next) {
+      addActivity('Orchestrator', d.loading_next);
+    }
+  });
+
+  socket.on('error', function (d) {
+    typingIndicator.style.display = 'none'; sendButton.disabled = false;
+    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+    clearAgentActive();
+    addMessage('Error: ' + (d && d.message ? d.message : 'Error del servidor'), 'agent');
+  });
+
+  socket.on('activity_log', function (log) {
+    const key = detectAgentKey(log.agent_name);
+    if (log.phase === 'start') setAgentActive(key, log.agent_name);
+    addActivity(log.agent_name || 'Sistema', log.action || log.event || '');
+  });
+
+  async function refreshMetrics() {
+    try {
+      const r = await fetch('/api/agents/metrics');
+      const d = await r.json();
+      if (d.metrics && d.metrics.overall) {
+        const o = d.metrics.overall;
+        document.getElementById('m-interactions').textContent = o.total_interactions || 0;
+        document.getElementById('m-success').textContent = o.success_rate !== undefined
+          ? (o.success_rate * 100).toFixed(0) + '%' : '&mdash;';
+        document.getElementById('m-avgtime').textContent = o.average_response_time || '&mdash;';
+      }
+    } catch (e) { }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    refreshMetrics();
+    setInterval(refreshMetrics, 12000);
+  });
+</script>
+{% endblock %}
