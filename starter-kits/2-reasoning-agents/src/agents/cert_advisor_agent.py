@@ -15,7 +15,14 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from .base_agent import AEPAgent
-from src.models.schemas import AEPWorkflowContext
+from src.models.schemas import (
+    AEPWorkflowContext,
+    AgentResponse,
+    AEPStudentProfile,
+    AEPStudyPlan,
+    AEPStudySession,
+    AEPCertificationPath
+)
 from src.tools.azure_openai_tool import AzureOpenAITool
 from src.tools.persistence import PersistenceTool
 
@@ -164,7 +171,7 @@ class AEPCertAdvisorAgent(AEPAgent):
                 {
                     "role": "system",
                     "content": (
-                        "Eres un asesor experto en certificaciones IT (Microsoft, AWS, CompTIA, Cisco, Google Cloud). "
+                        "Eres un asesor experto en certificaciones IT (Microsoft) "
                         "Usa toda tu capacidad para construir recomendaciones estratégicas, comparativas y accionables con el máximo ajuste al perfil del estudiante. "
                         "Proporciona asesoramiento personalizado, práctico y accionable sobre rutas de certificación. "
                         "Basa las recomendaciones en el perfil real del estudiante. "
