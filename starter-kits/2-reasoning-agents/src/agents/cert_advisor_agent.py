@@ -236,7 +236,7 @@ class AEPCertAdvisorAgent(AEPAgent):
 
     async def _get_certification_recommendations(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Obtiene recomendaciones de certificación personalizadas.
@@ -293,7 +293,7 @@ class AEPCertAdvisorAgent(AEPAgent):
 
     async def _assess_certification_readiness(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Evalúa la preparación del estudiante para una certificación específica.
@@ -363,7 +363,7 @@ class AEPCertAdvisorAgent(AEPAgent):
 
     async def _create_certification_path(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Crea una ruta de certificación completa.
@@ -418,7 +418,7 @@ class AEPCertAdvisorAgent(AEPAgent):
 
     async def _analyze_career_impact(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Analiza el impacto profesional de una certificación.
@@ -467,7 +467,7 @@ class AEPCertAdvisorAgent(AEPAgent):
 
     async def _get_certification_progress(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Obtiene el progreso del estudiante hacia certificaciones.

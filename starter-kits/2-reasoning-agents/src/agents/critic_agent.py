@@ -251,7 +251,7 @@ class AEPCriticAgent(AEPAgent):
 
     async def _validate_student_response(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Valida la respuesta de un estudiante.
@@ -301,7 +301,7 @@ class AEPCriticAgent(AEPAgent):
 
     async def _analyze_content_quality(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Analiza la calidad de contenido educativo.
@@ -356,7 +356,7 @@ class AEPCriticAgent(AEPAgent):
 
     async def _generate_constructive_feedback(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Genera feedback constructivo personalizado.
@@ -416,7 +416,7 @@ class AEPCriticAgent(AEPAgent):
 
     async def _check_plagiarism(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Verifica posible plagio en el contenido.
@@ -455,7 +455,7 @@ class AEPCriticAgent(AEPAgent):
 
     async def _moderate_content(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Modera contenido para asegurar cumplimiento de estándares.

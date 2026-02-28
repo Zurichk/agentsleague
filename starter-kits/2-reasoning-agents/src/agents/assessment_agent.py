@@ -199,7 +199,7 @@ class AEPAssessmentAgent(AEPAgent):
 
     async def _create_assessment(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Crea una nueva evaluación adaptativa.
@@ -254,7 +254,7 @@ class AEPAssessmentAgent(AEPAgent):
 
     async def _evaluate_response(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Evalúa la respuesta del estudiante a una pregunta.
@@ -334,7 +334,7 @@ class AEPAssessmentAgent(AEPAgent):
 
     async def _get_progress_report(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Genera un reporte de progreso del estudiante.
@@ -373,7 +373,7 @@ class AEPAssessmentAgent(AEPAgent):
 
     async def _generate_adaptive_question(
         self,
-        context: AgentContext
+        context: dict
     ) -> AgentResponse:
         """
         Genera una pregunta adaptativa basada en el rendimiento anterior.
