@@ -578,3 +578,73 @@ class AEPWorkflowContext(BaseModel):
         if self.assessments:
             return self.assessments[-1]
         return None
+    # ============================================================
+    # Modelos de Respuesta de Agente
+    # ============================================================
+
+    class AgentResponse(BaseModel):
+        """
+        Respuesta estándar de un agente AEP.
+
+        Attributes:
+            success: Indica si la operación fue exitosa.
+            message: Mensaje informativo o de error.
+            data: Datos devueltos por el agente (puede ser dict, lista, modelo, etc).
+            error: Detalles del error si ocurrió.
+            timestamp: Fecha y hora de la respuesta.
+        """
+        success: bool = Field(default=True, description="¿Operación exitosa?")
+        message: str = Field(default="", description="Mensaje informativo")
+        data: dict | list | None = Field(
+            default=None, description="Datos devueltos")
+        error: str | None = Field(
+            default=None, description="Detalles del error")
+        timestamp: datetime = Field(
+            default_factory=datetime.now, description="Fecha de la respuesta")
+
+    # Modelos faltantes referenciados en agentes (si no existen ya)
+
+    class AEPAssessmentQuestion(BaseModel):
+        """
+        Pregunta de evaluación generada por el agente.
+        """
+        question_id: str = Field(default="", description="ID de la pregunta")
+        question_text: str = Field(
+            default="", description="Texto de la pregunta")
+        question_type: str = Field(
+            default="multiple_choice", description="Tipo de pregunta")
+        options: list[str] = Field(
+            default_factory=list, description="Opciones de respuesta")
+        correct_answer: str = Field(
+            default="", description="Respuesta correcta")
+        explanation: str = Field(
+            default="", description="Explicación de la respuesta correcta")
+        knowledge_area: str = Field(
+            default="", description="Área de conocimiento evaluada")
+        difficulty: str = Field(
+            default="beginner", description="Dificultad de la pregunta")
+        bloom_level: str = Field(
+            default="remember", description="Nivel de Bloom")
+        points: int = Field(default=10, description="Puntos asignados")
+
+    class AEPKnowledgeArea(BaseModel):
+        """
+        Área de conocimiento del estudiante.
+        """
+        area_name: str = Field(default="", description="Nombre del área")
+        proficiency_level: float = Field(
+            default=0.0, ge=0.0, le=1.0, description="Nivel de dominio")
+
+    class AEPAssessmentResult(BaseModel):
+        """
+        Resultado de una pregunta en la evaluación.
+        """
+        question_id: str = Field(default="", description="ID de la pregunta")
+        student_response: str = Field(
+            default="", description="Respuesta del estudiante")
+        score: float = Field(default=0.0, ge=0.0, le=100.0,
+                             description="Puntuación obtenida")
+        feedback: str = Field(default="", description="Feedback generado")
+        evaluated_at: datetime = Field(default_factory=datetime.now)
+        time_spent: int = Field(
+            default=0, description="Tiempo dedicado (segundos)")
