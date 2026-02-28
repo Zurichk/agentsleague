@@ -498,6 +498,28 @@ class AEPCertification(BaseModel):
     )
 
 
+# Ruta de certificaciones sugeridas
+class AEPCertificationPath(BaseModel):
+    """
+    Camino de certificaciones recomendado para un estudiante.
+
+    Attributes:
+        path_id: Identificador único del camino.
+        student_id: ID del estudiante.
+        certifications: Lista ordenada de AEPCertification.
+        created_at: Fecha de creación.
+        estimated_total_weeks: Duración estimada en semanas.
+        notes: Comentarios o notas adicionales.
+    """
+    path_id: str = Field(default="", description="ID del camino")
+    student_id: str = Field(default="", description="ID del estudiante")
+    certifications: list[AEPCertification] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    estimated_total_weeks: float = Field(
+        default=0.0, description="Semanas estimadas")
+    notes: str = Field(default="", description="Notas adicionales")
+
+
 # ============================================================
 # Modelos del Workflow
 # ============================================================
@@ -579,9 +601,29 @@ class AEPWorkflowContext(BaseModel):
             return self.assessments[-1]
         return None
 
+
 # ============================================================
 # Modelos generales adicionales
 # ============================================================
+class AEPCertificationPath(BaseModel):
+    """
+    Ruta de certificaciones sugeridas para un estudiante.
+
+    Attributes:
+        path_id: Identificador del camino (uuid o similar).
+        student_id: ID del estudiante asociado.
+        certifications: Lista de AEPCertification ordenadas.
+        created_at: Fecha de creación del camino.
+        estimated_total_weeks: Tiempo estimado para completar (semanas).
+        notes: Comentarios adicionales.
+    """
+    path_id: str = Field(default="", description="Identificador de la ruta")
+    student_id: str = Field(default="", description="ID del estudiante")
+    certifications: list[AEPCertification] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    estimated_total_weeks: float = Field(
+        default=0.0, description="Semanas estimadas")
+    notes: str = Field(default="", description="Notas adicionales")
 
 
 class AEPFeedbackItem(BaseModel):
