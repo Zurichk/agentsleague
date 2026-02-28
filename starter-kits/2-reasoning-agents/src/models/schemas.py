@@ -580,6 +580,40 @@ class AEPWorkflowContext(BaseModel):
         return None
 
 # ============================================================
+# Modelos generales adicionales
+# ============================================================
+
+
+class AEPFeedbackItem(BaseModel):
+    """
+    Item de feedback generado por el agente crítico.
+
+    Attributes:
+        feedback_id: Identificador único del feedback.
+        student_id: ID del estudiante asociado.
+        assessment_id: ID de la evaluación relacionada.
+        feedback_type: Tipo de feedback (constructive, summary, etc.).
+        content: Texto del feedback.
+        priority: Prioridad del feedback (high, medium, low).
+        actionable_items: Lista de acciones recomendadas.
+        created_at: Fecha de creación.
+    """
+    feedback_id: str = Field(default="", description="ID del feedback")
+    student_id: str | None = Field(
+        default=None, description="ID del estudiante")
+    assessment_id: str | None = Field(
+        default=None, description="ID de la evaluación")
+    feedback_type: str = Field(
+        default="constructive", description="Tipo de feedback")
+    content: str = Field(default="", description="Texto del feedback")
+    priority: str = Field(
+        default="medium", description="Prioridad del feedback")
+    actionable_items: list[str] = Field(
+        default_factory=list, description="Elementos accionables")
+    created_at: datetime = Field(
+        default_factory=datetime.now, description="Fecha de creación")
+
+# ============================================================
 # Modelos de Respuesta de Agente
 # ============================================================
 
