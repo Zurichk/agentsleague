@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 
 from .base_agent import AEPAgent
 from src.tools.certifications import certifications_tool
+from src.tools.mslearn_mcp import mslearn_mcp_tool
 from src.models.schemas import (
     AEPLearningModule,
     AEPLearningPath,
@@ -207,6 +208,62 @@ class CuratorAgent(AEPAgent):
             f"Query: {search_query}",
         )
 
+        # Primer intento: obtener rutas reales mediante la herramienta MCP
+        try:
+            raw_paths = await mslearn_mcp_tool.search_learning_paths(
+                query=search_query,
+                certification=None,
+                max_results=5,
+            )
+            if raw_paths:
+                learning_paths: List[AEPLearningPath] = []
+                for item in raw_paths:
+                    modules: List[AEPLearningModule] = []
+                    try:
+                        details = await mslearn_mcp_tool.get_learning_path_details(
+                            item.get("url", ""),
+                        )
+                        for child in details.get("children", []) if details else []:
+                            modules.append(
+                                AEPLearningModule(
+                                    title=child.get("title", ""),
+                                    url=child.get("url", ""),
+                                    duration_minutes=int(
+                                        child.get("duration_minutes", 0) or 0
+                                    ),
+                                    description=child.get("summary", ""),
+                                    skills_covered=[],
+                                )
+                            )
+                    except Exception:
+                        pass
+
+                    learning_paths.append(
+                        AEPLearningPath(
+                            path_id=item.get(
+                                "uid") or f"lp-{uuid.uuid4().hex[:8]}",
+                            title=item.get("title", ""),
+                            description=item.get("summary", ""),
+                            modules=modules,
+                            estimated_hours=float(
+                                item.get("number_of_children", 0) or 0
+                            ),
+                            relevance_score=0.0,
+                        )
+                    )
+                if learning_paths:
+                    self.log_reasoning(
+                        "SEARCH_COMPLETE",
+                        f"Encontradas {len(learning_paths)} rutas reales",
+                        "Via Microsoft Learn API",
+                    )
+                    return learning_paths
+        except Exception as e:
+            self.logger.warning(
+                f"Fallo en mslearn_mcp_tool: {e}"
+            )
+
+        # si no hubo resultados reales, seguimos con el LLM de respaldo
         messages = [
             {
                 "role": "system",
