@@ -15,7 +15,15 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from .base_agent import AEPAgent
-from ..models.schemas import AEPWorkflowContext
+from ..models.schemas import (
+    AEPWorkflowContext,
+    AgentResponse,
+    AEPAssessmentQuestion,
+    AEPAssessment,
+    AEPAssessmentResult,
+    AEPKnowledgeArea,
+    AEPStudentProfile
+)
 from ..tools.azure_openai_tool import AzureOpenAITool
 from ..tools.persistence import PersistenceTool
 
