@@ -303,6 +303,75 @@ class AEPQuestionOption(BaseModel):
         default=False, description="Respuesta correcta"
     )
 
+    class AEPAssessmentQuestion(BaseModel):
+        """
+        Pregunta de evaluación generada por el agente.
+
+        Attributes:
+            question_id: Identificador único de la pregunta.
+            question_text: Texto de la pregunta.
+            question_type: Tipo de pregunta (multiple_choice, short_answer, etc).
+            options: Opciones de respuesta (solo para multiple_choice).
+            correct_answer: Respuesta correcta.
+            explanation: Explicación de la respuesta correcta.
+            knowledge_area: Área de conocimiento evaluada.
+            difficulty: Dificultad de la pregunta.
+            bloom_level: Nivel de Bloom.
+            points: Puntos asignados a la pregunta.
+        """
+        question_id: str = Field(default="", description="ID de la pregunta")
+        question_text: str = Field(
+            default="", description="Texto de la pregunta")
+        question_type: str = Field(
+            default="multiple_choice", description="Tipo de pregunta")
+        options: list[str] = Field(
+            default_factory=list, description="Opciones de respuesta")
+        correct_answer: str = Field(
+            default="", description="Respuesta correcta")
+        explanation: str = Field(
+            default="", description="Explicación de la respuesta correcta")
+        knowledge_area: str = Field(
+            default="", description="Área de conocimiento evaluada")
+        difficulty: str = Field(
+            default="beginner", description="Dificultad de la pregunta")
+        bloom_level: str = Field(
+            default="remember", description="Nivel de Bloom")
+        points: int = Field(default=10, description="Puntos asignados")
+
+    class AEPKnowledgeArea(BaseModel):
+        """
+        Área de conocimiento del estudiante.
+
+        Attributes:
+            area_name: Nombre del área.
+            proficiency_level: Nivel de dominio (0-1).
+        """
+        area_name: str = Field(default="", description="Nombre del área")
+        proficiency_level: float = Field(
+            default=0.0, ge=0.0, le=1.0, description="Nivel de dominio")
+
+    class AEPAssessmentResult(BaseModel):
+        """
+        Resultado de una pregunta en la evaluación.
+
+        Attributes:
+            question_id: ID de la pregunta.
+            student_response: Respuesta del estudiante.
+            score: Puntuación obtenida.
+            feedback: Feedback generado.
+            evaluated_at: Fecha de evaluación.
+            time_spent: Tiempo dedicado.
+        """
+        question_id: str = Field(default="", description="ID de la pregunta")
+        student_response: str = Field(
+            default="", description="Respuesta del estudiante")
+        score: float = Field(default=0.0, ge=0.0, le=100.0,
+                             description="Puntuación obtenida")
+        feedback: str = Field(default="", description="Feedback generado")
+        evaluated_at: datetime = Field(default_factory=datetime.now)
+        time_spent: int = Field(
+            default=0, description="Tiempo dedicado (segundos)")
+
 
 class AEPQuestion(BaseModel):
     """
