@@ -33,6 +33,10 @@ __pycache__/
 *.so
 .Python
 
+# Archivos generados por agentes
+starter-kits/2-reasoning-agents/data/calendars/
+starter-kits/2-reasoning-agents/data/emails/
+
 # TypeScript / JavaScript
 *.tsbuildinfo
 .npm
@@ -75,3 +79,5 @@ out/
 
 # Keep structure
 !.gitkeep
+
+template-agentes

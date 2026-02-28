@@ -199,6 +199,24 @@
         color: #495057;
         line-height: 1.5;
         font-size: 0.9rem;
+        white-space: pre-line;
+    }
+
+    .feedback-list {
+        margin-top: 16px;
+        display: grid;
+        gap: 10px;
+    }
+
+    .feedback-item {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: #fff;
+    }
+
+    .feedback-item strong {
+        color: #212529;
     }
 
     .page-header {
@@ -232,20 +250,36 @@
 <!-- Setup -->
 <div class="section-card" id="setup-section">
     <h2>⚙️ Configurar Evaluación</h2>
+    <div class="form-group">
+        <label for="plan-select" class="form-label">Plan de estudio (opcional)</label>
+        <select id="plan-select" class="form-select">
+            <option value="">Cargando planes...</option>
+        </select>
+        <p id="plan-select-help" style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">
+            Puedes seleccionar una certificación desde tus planes o escribir una manualmente.
+        </p>
+    </div>
     {% if chosen_cert %}
     <div class="form-group">
-        <label class="form-label">Certificación a evaluar</label>
+        <label class="form-label">Certificación detectada</label>
         <div
             style="background:#f0f7ff; border:2px solid #0078d4; border-radius:6px; padding:10px 14px; font-weight:600; color:#0078d4; font-size:0.95rem;">
             🎯 {{ chosen_cert }}
         </div>
         <input type="hidden" id="certification-value" value="{{ chosen_cert }}">
-        <p style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">Basada en tu plan de estudio actual. <a
-                href="/chat" style="color:#0078d4;">Cambiar en el chat →</a></p>
+        <p style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">Basada en tu plan más reciente. También puedes
+            sobrescribirla abajo.</p>
+    </div>
+    <div class="form-group">
+        <label for="certification-input" class="form-label">O escribir certificación manual</label>
+        <input type="text" id="certification-input" class="form-select" placeholder="Ej: AZ-900, MB-800, AI-102..."
+            style="font-family:'Segoe UI',Arial,sans-serif;">
+        <p style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">Si completas este campo, tendrá prioridad sobre
+            el plan seleccionado.</p>
     </div>
     {% else %}
     <div class="form-group">
-        <label for="certification-input" class="form-label">Certificación</label>
+        <label for="certification-input" class="form-label">Certificación manual</label>
         <input type="text" id="certification-input" class="form-select" placeholder="Ej: AZ-900, MB-800, AI-102..."
             style="font-family:'Segoe UI',Arial,sans-serif;">
         <p style="margin:6px 0 0 0; font-size:0.82rem; color:#6c757d;">Aún no tienes un plan de estudio. <a href="/chat"
@@ -284,6 +318,7 @@
     <div class="analysis-box" id="results-analysis">
         <div class="analysis-title">🔍 Análisis del Critic Agent</div>
         <div class="analysis-text" id="results-text">—</div>
+        <div id="results-feedback" class="feedback-list"></div>
     </div>
     <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;">
         <button class="btn-primary" onclick="location.reload()">Nueva Evaluación</button>
@@ -301,18 +336,58 @@
     let currentQuestionIndex = 0;
     let timer = null;
     let timeLeft = 0;
+    const CURRENT_STUDENT_ID = '{{ student_id }}';
 
     document.getElementById('start-assessment-btn').addEventListener('click', startAssessment);
     document.getElementById('next-btn').addEventListener('click', nextQuestion);
     document.getElementById('prev-btn').addEventListener('click', previousQuestion);
 
+    function getSelectedCertification() {
+        const manualInput = document.getElementById('certification-input');
+        const manual = manualInput ? manualInput.value.trim() : '';
+        if (manual) return manual;
+
+        const planSelect = document.getElementById('plan-select');
+        if (planSelect && planSelect.value) {
+            return planSelect.value;
+        }
+
+        const hidden = document.getElementById('certification-value');
+        return hidden ? hidden.value.trim() : '';
+    }
+
+    async function loadPlanCertifications() {
+        const select = document.getElementById('plan-select');
+        const help = document.getElementById('plan-select-help');
+        try {
+            const r = await fetch('/api/study-plans/' + CURRENT_STUDENT_ID);
+            const data = await r.json();
+            const plans = (r.ok && data.success) ? (data.plans || []) : [];
+
+            if (plans.length === 0) {
+                select.innerHTML = '<option value="">Sin planes disponibles</option>';
+                help.textContent = 'No hay planes guardados para este estudiante.';
+                return;
+            }
+
+            const options = ['<option value="">Selecciona desde un plan...</option>'];
+            plans.forEach(function (plan) {
+                if (!plan.certification) return;
+                const label = (plan.plan_name || plan.plan_id) + ' · ' + plan.certification;
+                options.push('<option value="' + plan.certification + '">' + label + '</option>');
+            });
+            select.innerHTML = options.join('');
+            help.textContent = 'Selecciona una certificación de un plan existente o escribe una manual.';
+        } catch (e) {
+            select.innerHTML = '<option value="">No se pudieron cargar planes</option>';
+            help.textContent = 'Error cargando planes: ' + e.message;
+        }
+    }
+
     async function startAssessment() {
-        // Obtener la cert del perfil del estudiante (hidden input) o del campo de texto
-        const certEl = document.getElementById('certification-value');
-        const certInput = document.getElementById('certification-input');
-        const cert = certEl ? certEl.value.trim() : (certInput ? certInput.value.trim() : '');
+        const cert = getSelectedCertification();
         if (!cert) {
-            alert('Por favor indica la certificación a evaluar, o inicia el chat para que el agente te recomiende una.');
+            alert('Selecciona una certificación desde un plan o escríbela manualmente.');
             return;
         }
         const count = document.getElementById('questions-select').value;
@@ -420,9 +495,7 @@
         document.getElementById('quiz-section').classList.add('hidden');
         document.getElementById('results-section').classList.remove('hidden');
         document.getElementById('results-score').textContent = 'Calculando...';
-        const certEl = document.getElementById('certification-value');
-        const certInput = document.getElementById('certification-input');
-        const cert = certEl ? certEl.value.trim() : (certInput ? certInput.value.trim() : '');
+        const cert = getSelectedCertification();
         try {
             const r = await fetch('/api/assessment/submit', {
                 method: 'POST',
@@ -434,7 +507,23 @@
                 const el = document.getElementById('results-score');
                 el.textContent = data.score + '/' + data.total + ' (' + data.percentage.toFixed(1) + '%)';
                 el.className = 'results-score ' + (data.passed ? 'results-passed' : 'results-failed');
-                document.getElementById('results-text').textContent = data.critic_analysis || '—';
+                document.getElementById('results-text').textContent = data.critic_analysis_clean || data.critic_analysis || '—';
+
+                const feedbackContainer = document.getElementById('results-feedback');
+                const summary = data.feedback_summary || {};
+                const incorrect = summary.incorrect_details || [];
+                if (!incorrect.length) {
+                    feedbackContainer.innerHTML = '<div class="feedback-item">✅ Sin errores. Puedes avanzar al siguiente nivel.</div>';
+                } else {
+                    feedbackContainer.innerHTML = incorrect.map(function (item) {
+                        return '<div class="feedback-item">' +
+                            '<div><strong>Pregunta:</strong> ' + (item.question || '—') + '</div>' +
+                            '<div><strong>Tu respuesta:</strong> ' + (item.chosen || '—') + '</div>' +
+                            '<div><strong>Respuesta correcta:</strong> ' + (item.correct || '—') + '</div>' +
+                            '<div><strong>Explicación:</strong> ' + (item.explanation || '—') + '</div>' +
+                            '</div>';
+                    }).join('');
+                }
             } else {
                 document.getElementById('results-score').textContent = 'Error';
                 document.getElementById('results-text').textContent = data.message || 'Error desconocido';
@@ -443,5 +532,9 @@
             document.getElementById('results-score').textContent = 'Error al conectar';
         }
     }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        loadPlanCertifications();
+    });
 </script>
 {% endblock %}

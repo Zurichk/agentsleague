@@ -257,6 +257,16 @@
         </div>
         <button id="save-plan-name-btn" class="btn-action secondary" style="cursor:pointer;">Guardar nombre</button>
     </div>
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="delete-current-plan-btn" class="btn-action secondary"
+            style="cursor:pointer;border:1px solid #dc3545;color:#dc3545;">
+            🗑️ Borrar plan activo
+        </button>
+        <button id="delete-all-plans-btn" class="btn-action secondary"
+            style="cursor:pointer;border:1px solid #dc3545;color:#dc3545;">
+            🧨 Borrar todos los planes
+        </button>
+    </div>
     <p id="plan-manager-status" style="margin-top:10px;font-size:.85rem;color:#6c757d;">
         Puedes tener varios planes activos para distintas certificaciones.
     </p>
@@ -477,6 +487,63 @@
         }
     }
 
+    async function deleteCurrentPlan() {
+        const status = document.getElementById('plan-manager-status');
+        if (!CURRENT_PLAN_ID) {
+            status.style.color = '#dc3545';
+            status.textContent = 'No hay plan activo para eliminar.';
+            return;
+        }
+        if (!confirm('¿Seguro que deseas borrar el plan activo?')) return;
+
+        try {
+            const r = await fetch('/api/study-plan/' + CURRENT_PLAN_ID, {
+                method: 'DELETE'
+            });
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudo borrar el plan.');
+            }
+            status.style.color = '#1a7f37';
+            status.textContent = 'Plan borrado correctamente.';
+            CURRENT_PLAN_ID = '';
+            await loadPlans();
+            if (CURRENT_PLAN_ID) {
+                await loadStudyPlan(CURRENT_PLAN_ID);
+            } else {
+                document.getElementById('timeline-content').innerHTML =
+                    '<p style="color:#6c757d;font-style:italic;">No hay planes disponibles.</p>';
+            }
+        } catch (e) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Error borrando plan: ' + e.message;
+        }
+    }
+
+    async function deleteAllPlans() {
+        const status = document.getElementById('plan-manager-status');
+        if (!confirm('¿Seguro que deseas borrar TODOS los planes de este estudiante?')) return;
+
+        try {
+            const r = await fetch('/api/study-plans/' + CURRENT_STUDENT_ID, {
+                method: 'DELETE'
+            });
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudieron borrar los planes.');
+            }
+            status.style.color = '#1a7f37';
+            status.textContent = 'Se eliminaron ' + data.deleted_plans + ' plan(es).';
+            CURRENT_PLAN_ID = '';
+            await loadPlans();
+            document.getElementById('timeline-content').innerHTML =
+                '<p style="color:#6c757d;font-style:italic;">No hay planes disponibles.</p>';
+        } catch (e) {
+            status.style.color = '#dc3545';
+            status.textContent = 'Error borrando planes: ' + e.message;
+        }
+    }
+
     async function toggleSessionCompleted(sessionId, completed) {
         if (!CURRENT_PLAN_ID || !sessionId) return;
         try {
@@ -524,6 +591,7 @@
             status.textContent = 'Debes indicar un email válido.';
             return;
         }
+        const sendTestEmail = window.confirm('¿Quieres enviar un email de prueba ahora para validar la configuración?');
 
         const btn = document.getElementById('activate-reminders-btn');
         btn.disabled = true;
@@ -536,7 +604,7 @@
             const r = await fetch('/api/study-plan/' + CURRENT_PLAN_ID + '/activate-email-reminders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ email, send_test_email: sendTestEmail })
             });
             const data = await r.json();
             if (!r.ok || !data.success) {
@@ -544,9 +612,15 @@
             }
 
             status.style.color = '#1a7f37';
-            status.textContent = data.email_sent
-                ? 'Avisos activados y email enviado correctamente a ' + email + '.'
-                : 'Avisos activados para ' + email + '.';
+            if (data.test_email_requested) {
+                status.textContent = data.test_email_sent
+                    ? 'Avisos activados, email del plan enviado y prueba OK en ' + email + '.'
+                    : 'Avisos activados, pero la prueba de email no se confirmó.';
+            } else {
+                status.textContent = data.email_sent
+                    ? 'Avisos activados y email del plan enviado correctamente a ' + email + '.'
+                    : 'Avisos activados para ' + email + '.';
+            }
         } catch (e) {
             status.style.color = '#dc3545';
             status.textContent = 'Error activando avisos: ' + e.message;
@@ -564,6 +638,8 @@
         document.getElementById('download-calendar-link').href = '/api/study-plan/' + CURRENT_PLAN_ID + '/calendar';
         document.getElementById('activate-reminders-btn').addEventListener('click', activateEmailReminders);
         document.getElementById('save-plan-name-btn').addEventListener('click', renameCurrentPlan);
+        document.getElementById('delete-current-plan-btn').addEventListener('click', deleteCurrentPlan);
+        document.getElementById('delete-all-plans-btn').addEventListener('click', deleteAllPlans);
         document.getElementById('plan-selector').addEventListener('change', function (ev) {
             CURRENT_PLAN_ID = ev.target.value;
             document.getElementById('download-calendar-link').href = '/api/study-plan/' + CURRENT_PLAN_ID + '/calendar';

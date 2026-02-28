@@ -212,8 +212,39 @@ class EmailTool:
         try:
             if self.simulate_sending:
                 return await self._simulate_send_email(recipient, subject, html_content, attachments)
-            else:
-                return await self._real_send_email(recipient, subject, html_content, attachments)
+            try:
+                return await self._real_send_email(
+                    recipient,
+                    subject,
+                    html_content,
+                    attachments,
+                )
+            except smtplib.SMTPException as smtp_error:
+                logger.warning(
+                    "⚠️ Error SMTP enviando email real a %s: %s. "
+                    "Aplicando fallback a envío simulado.",
+                    recipient,
+                    smtp_error,
+                )
+                return await self._simulate_send_email(
+                    recipient,
+                    subject,
+                    html_content,
+                    attachments,
+                )
+            except OSError as os_error:
+                logger.warning(
+                    "⚠️ Error de red/encriptación enviando email real a %s: %s. "
+                    "Aplicando fallback a envío simulado.",
+                    recipient,
+                    os_error,
+                )
+                return await self._simulate_send_email(
+                    recipient,
+                    subject,
+                    html_content,
+                    attachments,
+                )
         except Exception as e:
             logger.error(f"âŒ Error enviando email a {recipient}: {e}")
             return False

@@ -1,6 +1,5 @@
 FROM python:3.12-slim
 
-
 LABEL maintainer="AEP CertMaster"
 LABEL description="Dashboard multi-agente de preparación para certificaciones Microsoft"
 

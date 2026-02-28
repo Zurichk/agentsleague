@@ -388,6 +388,70 @@ class PersistenceTool:
             )
             return []
 
+    def delete_study_plans(
+        self,
+        student_id: str,
+        plan_id: Optional[str] = None,
+    ) -> int:
+        """Elimina planes de estudio de un estudiante.
+
+        Args:
+            student_id: ID del estudiante propietario.
+            plan_id: ID de plan específico. Si es None, borra todos.
+
+        Returns:
+            Cantidad de planes eliminados.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                if plan_id:
+                    cursor.execute(
+                        "SELECT plan_id FROM study_plans "
+                        "WHERE student_id = ? AND plan_id = ?",
+                        (student_id, plan_id),
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT plan_id FROM study_plans WHERE student_id = ?",
+                        (student_id,),
+                    )
+
+                plan_ids = [row[0] for row in cursor.fetchall()]
+                if not plan_ids:
+                    return 0
+
+                for current_plan_id in plan_ids:
+                    cursor.execute(
+                        "DELETE FROM study_progress WHERE plan_id = ?",
+                        (current_plan_id,),
+                    )
+                    cursor.execute(
+                        "DELETE FROM assessments WHERE plan_id = ?",
+                        (current_plan_id,),
+                    )
+                    cursor.execute(
+                        "DELETE FROM study_plans WHERE plan_id = ?",
+                        (current_plan_id,),
+                    )
+
+                conn.commit()
+
+            logger.info(
+                "✅ Planes eliminados para estudiante %s: %s",
+                student_id,
+                len(plan_ids),
+            )
+            return len(plan_ids)
+        except Exception as e:
+            logger.error(
+                "❌ Error eliminando planes de estudio para %s: %s",
+                student_id,
+                e,
+            )
+            return 0
+
     def update_study_plan_name(self, plan_id: str, plan_name: str) -> bool:
         """Actualiza el nombre visible de un plan de estudio."""
         try:
@@ -760,6 +824,43 @@ class PersistenceTool:
         except Exception as e:
             logger.error(f"❌ Error recuperando historial de conversación: {e}")
             return []
+
+    def delete_conversation_history(self, student_id: str) -> int:
+        """Elimina el historial de conversación y métricas de sesión.
+
+        Args:
+            student_id: ID del estudiante.
+
+        Returns:
+            Cantidad de mensajes eliminados.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM conversation_history WHERE student_id = ?",
+                    (student_id,),
+                )
+                deleted_rows = cursor.rowcount or 0
+                cursor.execute(
+                    "DELETE FROM session_metrics WHERE student_id = ?",
+                    (student_id,),
+                )
+                conn.commit()
+
+            logger.info(
+                "✅ Historial eliminado para %s: %s mensajes",
+                student_id,
+                deleted_rows,
+            )
+            return deleted_rows
+        except Exception as e:
+            logger.error(
+                "❌ Error eliminando historial para %s: %s",
+                student_id,
+                e,
+            )
+            return 0
 
     # -------------------------------------------------------------------------
     # Métricas de sesión

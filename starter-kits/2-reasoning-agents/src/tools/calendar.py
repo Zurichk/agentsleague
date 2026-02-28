@@ -161,27 +161,53 @@ class CalendarTool:
         """Genera un evento ICS para una sesión de estudio."""
 
         try:
-            session_date = session.get("date")
+            session_date = session.get("date") or session.get("session_date")
             if isinstance(session_date, str):
                 session_date = datetime.fromisoformat(session_date)
 
             if not session_date:
                 return []
 
-            session_id = session.get("session_id", str(uuid.uuid4()))
-            title = session.get("title", "Sesión de Estudio")
-            duration_hours = session.get("duration_hours", 1.0)
+            if isinstance(session_date, datetime):
+                base_date = session_date.date()
+            else:
+                base_date = session_date
 
-            end_time = session_date + timedelta(hours=duration_hours)
+            session_id = session.get("session_id", str(uuid.uuid4()))
+            title = (
+                session.get("title")
+                or session.get("topic")
+                or session.get("module_title")
+                or "Sesión de Estudio"
+            )
+            duration_minutes = int(session.get("duration_minutes", 0) or 0)
+            if duration_minutes <= 0:
+                duration_hours = float(session.get(
+                    "duration_hours", 1.0) or 1.0)
+                duration_minutes = max(30, int(duration_hours * 60))
+
+            start_time = datetime.combine(base_date, datetime.min.time()).replace(
+                hour=18,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            end_time = start_time + timedelta(minutes=duration_minutes)
+
+            description = (
+                session.get('description')
+                or session.get('topic')
+                or "Sesión de estudio"
+            )
 
             return [
                 "BEGIN:VEVENT",
                 f"UID:{session_id}@aep-certmaster",
                 f"DTSTAMP:{datetime.now().strftime('%Y%m%dT%H%M%SZ')}",
-                f"DTSTART:{session_date.strftime('%Y%m%dT%H%M%SZ')}",
+                f"DTSTART:{start_time.strftime('%Y%m%dT%H%M%SZ')}",
                 f"DTEND:{end_time.strftime('%Y%m%dT%H%M%SZ')}",
                 f"SUMMARY:{title}",
-                f"DESCRIPTION:Sesión de estudio: {session.get('description', '')}",
+                f"DESCRIPTION:Sesión de estudio: {description}",
                 f"ORGANIZER:mailto:certmaster@aep.com",
                 f"ATTENDEE:mailto:{student_email}",
                 "STATUS:CONFIRMED",

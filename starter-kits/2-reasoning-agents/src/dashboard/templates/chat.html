@@ -1301,6 +1301,10 @@
         document.getElementById('m-success').textContent = o.success_rate !== undefined
           ? (o.success_rate * 100).toFixed(0) + '%' : '&mdash;';
         document.getElementById('m-avgtime').textContent = o.average_response_time || '&mdash;';
+        if (o.total_tokens_used !== undefined && o.total_tokens_used !== null) {
+          sessionTokens = Number(o.total_tokens_used) || 0;
+          document.getElementById('m-tokens').textContent = sessionTokens.toLocaleString();
+        }
       }
     } catch (e) { }
   }

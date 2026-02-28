@@ -178,6 +178,12 @@
 <div class="page-header">
     <h1>📊 Logs del Sistema</h1>
     <p>Registro de interacciones del sistema multi-agente</p>
+    <div style="margin-top:12px;">
+        <button id="clear-logs-btn"
+            style="background:#dc3545;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:.85rem;">
+            🗑️ Borrar logs
+        </button>
+    </div>
 </div>
 
 <div class="stats-bar">
@@ -305,6 +311,29 @@
     });
     document.getElementById('log-modal').addEventListener('click', function (e) {
         if (e.target === this) this.classList.remove('open');
+    });
+
+    document.getElementById('clear-logs-btn').addEventListener('click', async function () {
+        if (!confirm('¿Seguro que deseas borrar todos tus logs de conversación?')) {
+            return;
+        }
+        const btn = this;
+        const previous = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Borrando...';
+        try {
+            const r = await fetch('/api/logs', { method: 'DELETE' });
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.message || 'No se pudieron borrar los logs.');
+            }
+            await loadLogs();
+        } catch (e) {
+            alert('Error borrando logs: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = previous;
+        }
     });
 
     document.addEventListener('DOMContentLoaded', function () { loadLogs(); });

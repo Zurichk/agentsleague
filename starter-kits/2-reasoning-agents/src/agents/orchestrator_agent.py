@@ -1,83 +1,46 @@
-"""
-Dashboard Flask Simplificado - AEP CertMaster
+"""Orchestrator agents extracted from dashboard app for modular reuse."""
 
-Aplicación web simplificada usando Flask para el dashboard del sistema multi-agente.
-"""
-
-from src.agents.orchestrator_agent import (
-    OrchestratorAgent as ExternalOrchestratorAgent,
-)
-
-from src.utils.guardrails import (
-    validate_user_message,
-    sanitize_text,
-)
-import json
 import logging
-import os
+import re
 import time
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, Response, g, session, redirect, url_for, send_file
-from flask_socketio import SocketIO, emit
-import functools
-import asyncio
 
-# Cargar variables de entorno desde .env ANTES de cualquier inicialización
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-    print("Archivo .env cargado correctamente")
-except ImportError:
-    print("python-dotenv no disponible - usando variables de entorno del sistema")
-
-# Importar métricas de agentes
 try:
     from src.agents.metrics import get_metrics_collector
-    print("Módulo de métricas cargado correctamente")
-    print(
-        f"Colector de métricas disponible: {get_metrics_collector is not None}")
-except ImportError as e:
-    print(f"Error importando módulo de métricas: {e}")
-    get_metrics_collector = None
+except ImportError:
+    try:
+        from metrics import get_metrics_collector
+    except ImportError:
+        get_metrics_collector = None
 
-# Configurar sys.path para imports absolutos
-import sys
-import os
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-# Importar sistema de logging estructurado
 try:
     from src.utils.logger import (
-        get_orchestrator_logger, TraceContext, log_agent_action, log_workflow_transition,
-        log_performance_metrics, get_agent_logger, get_workflow_logger,
-        create_trace_context, save_trace_context, get_current_trace_context,
-        log_agent_response, log_error
+        get_orchestrator_logger,
+        TraceContext,
+        log_agent_action,
+        log_workflow_transition,
+        log_performance_metrics,
+        log_agent_response,
+        log_error,
     )
-    print("Sistema de logging estructurado cargado correctamente")
-except ImportError as e:
-    print(f"Error importando sistema de logging estructurado: {e}")
-    # Funciones dummy simplificadas
-
+except ImportError:
     def get_orchestrator_logger():
         return logging.getLogger("orchestrator")
 
     def log_agent_action(logger, agent_name, action, message, extra=None, trace_context=None):
-        logger.info(f"[{agent_name}] {action}: {message}")
+        logger.info("[%s] %s: %s", agent_name, action, message)
 
     def log_workflow_transition(logger, trace_context, transition_type, message, extra=None):
-        logger.info(f"[{transition_type}] {message}")
+        logger.info("[%s] %s", transition_type, message)
 
     def log_performance_metrics(logger, trace_context, operation, duration, extra=None):
-        logger.info(f"[PERF] {operation}: {duration:.2f}s")
+        logger.info("[PERF] %s: %.2fs", operation, duration)
 
     def log_agent_response(logger, agent_name, action, message, extra=None, trace_context=None):
-        logger.info(f"[{agent_name}] Response: {message}")
+        logger.info("[%s] Response: %s", agent_name, message)
 
     def log_error(logger, component, operation, message, extra=None, trace_context=None):
-        logger.error(f"[{component}] {operation} ERROR: {message}")
+        logger.error("[%s] %s ERROR: %s", component, operation, message)
 
     class TraceContext:
         def __init__(self, session_id="", user_id="", operation=""):
@@ -86,42 +49,16 @@ except ImportError as e:
             self.operation = operation
             self.trace_id = f"{session_id}_{user_id}_{operation}"
 
-    get_agent_logger = get_orchestrator_logger
-    get_workflow_logger = get_orchestrator_logger
-    create_trace_context = lambda **kwargs: TraceContext(**kwargs)
-    def save_trace_context(ctx): return None
-    def get_current_trace_context(): return None
-
-# Guardrails y validaciones
-
-# Importar herramienta de persistencia
 try:
     from src.tools.persistence import persistence_tool
-    print("✅ Herramienta de persistencia cargada correctamente")
-except Exception as e:
-    print(f"⚠️ Error cargando persistencia ({type(e).__name__}): {e}")
-    # Intentar inicializar directamente como fallback
+except Exception:
     try:
         from src.tools.persistence import PersistenceTool
         persistence_tool = PersistenceTool()
-        print("✅ Persistencia inicializada por fallback")
-    except Exception as e2:
-        print(f"❌ Persistencia no disponible: {e2}")
+    except Exception:
         persistence_tool = None
 
-try:
-    from src.tools.email import email_tool
-except Exception as e:
-    print(f"⚠️ Email tool no disponible: {e}")
-    email_tool = None
-
-try:
-    from src.tools.calendar import calendar_tool
-except Exception as e:
-    print(f"⚠️ Calendar tool no disponible: {e}")
-    calendar_tool = None
-
-# Clases para integración con Azure AI Foundry
+logger = logging.getLogger(__name__)
 
 
 class RealAgent:
@@ -159,8 +96,10 @@ class RealAgent:
                 api_version=api_version
             )
             self.deployment = deployment
-            print(
-                f"✅ Cliente Azure OpenAI inicializado para agente {self.name}")
+            logging.getLogger(__name__).debug(
+                "Azure OpenAI client inicializado para agente %s",
+                self.name,
+            )
         except ImportError:
             raise RuntimeError(
                 "OpenAI SDK no disponible. Instala dependencias para usar Azure OpenAI."
@@ -544,7 +483,7 @@ Proporciona datos reales del mercado y rutas certificadas comprobadas."""
 class OrchestratorAgent:
     """Agente coordinador principal que maneja el flujo completo con trazabilidad completa."""
 
-    def __init__(self):
+    def __init__(self, socketio_client=None):
         # Configurar logger estructurado
         self.logger = get_orchestrator_logger(
         ) if get_orchestrator_logger else logging.getLogger(__name__)
@@ -560,7 +499,7 @@ class OrchestratorAgent:
                 "AZURE_OPENAI_API_KEY para iniciar el dashboard."
             )
 
-        print("🔵 Modo único habilitado: Azure OpenAI")
+        self.logger.info("Modo runtime habilitado: Azure OpenAI")
 
         agent_configs = {
             'curator': 'Especialista en gestionar itinerarios de aprendizaje',
@@ -574,15 +513,20 @@ class OrchestratorAgent:
         self.agents = {}
         for name, description in agent_configs.items():
             self.agents[name] = RealAgent(name, "", description)
-            print(f"✅ Agente {name} configurado con Azure OpenAI")
+            self.logger.debug("Agente %s configurado", name)
 
         self.conversation_state = {}
         self.interaction_logs = []
         # SID del socket activo (actualizado por el handler)
         self._active_sid: str = ''
+        self.socketio_client = socketio_client
 
         log_agent_action(self.logger, "OrchestratorAgent", "initialization",
                          "Orchestrator initialized", "Mode: azure_openai")
+
+    def set_socketio(self, socketio_client) -> None:
+        """Actualiza el cliente SocketIO para emisiones fuera de contexto de request."""
+        self.socketio_client = socketio_client
 
     def _emit_agent_active(self, agent_key: str, agent_label: str) -> None:
         """Emite evento agent_active al cliente WebSocket activo (si hay conexión)."""
@@ -595,8 +539,8 @@ class OrchestratorAgent:
         except RuntimeError:
             # Fuera de contexto de request; intentar con socketio global
             try:
-                if self._active_sid:
-                    socketio.emit('agent_active', {
+                if self._active_sid and self.socketio_client:
+                    self.socketio_client.emit('agent_active', {
                         'agent_name': agent_label,
                         'agent_key': agent_key
                     }, to=self._active_sid)
@@ -616,9 +560,9 @@ class OrchestratorAgent:
             sio_emit('partial_response', payload)
         except RuntimeError:
             try:
-                if self._active_sid:
-                    socketio.emit('partial_response', payload,
-                                  to=self._active_sid)
+                if self._active_sid and self.socketio_client:
+                    self.socketio_client.emit('partial_response', payload,
+                                              to=self._active_sid)
             except Exception:
                 pass  # No bloqueamos el flujo si no hay socket disponible
 
@@ -704,6 +648,69 @@ class OrchestratorAgent:
         except Exception:
             return False
 
+    @staticmethod
+    def _extract_certification_code(text: str) -> str | None:
+        """Extrae código de certificación tipo MB-800, AZ-900, AI-102."""
+        match = re.search(
+            r'\b([A-Z]{2,3}-\d{3,4}[A-Z0-9]?)\b', text or '', re.IGNORECASE)
+        if not match:
+            return None
+        return match.group(1).upper()
+
+    def _should_update_certification_goal(
+        self,
+        message: str,
+        detected_topic: str,
+        state: dict,
+    ) -> bool:
+        """Determina si se debe actualizar la certificación objetivo."""
+        message_code = self._extract_certification_code(message)
+        topic_code = self._extract_certification_code(detected_topic)
+        if message_code or topic_code:
+            return True
+
+        current_goal = (state.get('chosen_certification') or '').strip()
+        if current_goal:
+            return False
+
+        return bool((detected_topic or '').strip())
+
+    @staticmethod
+    def _parse_replan_choice(message: str) -> str:
+        """Clasifica decisión post-evaluación: new_plan | continue_plan | unknown."""
+        normalized = (message or '').strip().lower()
+
+        continue_terms = [
+            'continuar', 'seguir', 'plan actual', 'itinerario actual',
+            'mantener plan', 'seguir igual', 'no cambiar',
+        ]
+        new_plan_terms = [
+            'nuevo plan', 'refinar', 'ajustar', 'preparar', 'refuerzo',
+            'replan', 'sí', 'si', 'ok', 'adelante', 'basado en evaluacion',
+        ]
+
+        if any(term in normalized for term in continue_terms):
+            return 'continue_plan'
+        if any(term in normalized for term in new_plan_terms):
+            return 'new_plan'
+        return 'unknown'
+
+    def _build_reinforcement_context(self, state: dict, user_message: str) -> str:
+        """Construye contexto de preparación manteniendo certificación y brechas."""
+        chosen_cert = state.get('chosen_certification',
+                                '') or 'la certificación objetivo actual'
+        last_assessment = state.get('last_assessment_feedback', '')
+        last_curator = state.get('curator_data', {}).get(
+            'response', '') if state.get('curator_data') else ''
+
+        return (
+            f"El estudiante quiere continuar preparación para: {chosen_cert}.\n"
+            f"Mensaje actual del estudiante: {user_message}.\n\n"
+            f"Mantén la certificación objetivo salvo que el estudiante pida explícitamente cambiarla.\n"
+            f"Último análisis de evaluación (brechas):\n{last_assessment}\n\n"
+            f"Contexto previo de curator:\n{last_curator}"
+        )
+
     def _detect_intent_with_llm(self, message: str, state: dict) -> dict:
         """
         Usa el LLM para clasificar la intención del usuario en lugar de regex/keywords.
@@ -735,20 +742,26 @@ class OrchestratorAgent:
             deployment = _os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4o')
 
             current_phase = state.get('phase', 'initial')
+            chosen_certification = state.get('chosen_certification', '')
+            next_step = state.get('next_step', '')
             system_prompt = (
-                "Eres el módulo de detección de intención del Orchestrator de AEP CertMaster. "
-                "Tu única tarea es clasificar el mensaje del usuario en UNA sola categoría. "
-                "Responde EXCLUSIVAMENTE con JSON válido, sin markdown ni texto extra. "
-                "Formato: {\"intent\": \"<categoria>\", \"confidence\": <0.0-1.0>, \"topic\": \"<tema detectado o vacío>\"}\n\n"
-                "Categorías posibles:\n"
-                "- preparation  → El usuario quiere aprender, estudiar o prepararse para un tema (puede ser vago como 'me interesa la nube' o específico 'quiero AZ-900')\n"
-                "- assessment   → El usuario quiere ser evaluado, hacer un test, quiz o recibir feedback sobre sus conocimientos\n"
-                "- certification → El usuario pregunta qué certificación hacer, quiere el catálogo, orientación profesional o roadmap de certificaciones\n"
-                "- confirm      → El usuario confirma continuar, dice sí/ok/adelante/comenzar en respuesta a una pregunta\n"
-                "- study_plan   → El usuario quiere ver o revisar su plan de estudio ya generado\n"
-                "- greeting     → Saludo puro, reinicio de conversación o mensaje sin intención de acción\n"
-                "- other        → No encaja en ninguna de las anteriores\n\n"
-                f"Contexto actual del sistema: fase='{current_phase}'"
+                "Eres un clasificador de intención para el Orchestrator de AEP CertMaster. "
+                "Debes seleccionar exactamente UNA categoría y devolver SOLO JSON válido. "
+                "No devuelvas markdown ni texto adicional.\n\n"
+                "Salida obligatoria:\n"
+                "{\"intent\":\"preparation|assessment|certification|confirm|study_plan|greeting|other\","
+                "\"confidence\":0.0-1.0,"
+                "\"topic\":\"texto breve o vacío\"}\n\n"
+                "Reglas de decisión:\n"
+                "1) Si el usuario responde una confirmación contextual (sí/ok/adelante) usa 'confirm'.\n"
+                "2) Si pide test, quiz, evaluar, corregir respuestas usa 'assessment'.\n"
+                "3) Si pide roadmap/certificación sugerida usa 'certification'.\n"
+                "4) Si pide crear/refinar/continuar preparación usa 'preparation'.\n"
+                "5) Si solo pide ver su plan usa 'study_plan'.\n"
+                "6) Si es saludo simple usa 'greeting'.\n"
+                "7) Si no aplica, usa 'other'.\n"
+                "8) Conserva el contexto: evita inferir nuevo tema si el mensaje es corto y ya existe una certificación activa.\n\n"
+                f"Contexto: phase={current_phase}; next_step={next_step}; chosen_certification={chosen_certification or 'none'}"
             )
 
             resp = _client.chat.completions.create(
@@ -769,8 +782,12 @@ class OrchestratorAgent:
                      'study_plan', 'greeting', 'other'}
             if intent not in valid:
                 intent = 'other'
-            print(
-                f"[INTENT-LLM] '{message[:60]}' → {intent} ({result.get('confidence', '?')})")
+            self.logger.debug(
+                "Intent LLM: %s -> %s (confidence=%s)",
+                message[:60],
+                intent,
+                result.get('confidence', '?'),
+            )
             return {
                 'intent': intent,
                 'confidence': float(result.get('confidence', 0.8)),
@@ -778,7 +795,7 @@ class OrchestratorAgent:
             }
 
         except Exception as e:
-            print(f"[INTENT-LLM] Error de clasificación: {e}")
+            self.logger.warning("Intent LLM fallback por error: %s", e)
             return {'intent': 'other', 'confidence': 0.0, 'topic': ''}
 
     @staticmethod
@@ -794,8 +811,6 @@ class OrchestratorAgent:
 
         Este formato alimenta la vista `/study-plan` y el calendario `.ics`.
         """
-        import re
-
         text = study_plan_response or ""
         day_map = {
             'lunes': 0,
@@ -819,14 +834,77 @@ class OrchestratorAgent:
         milestones = []
 
         week_re = re.compile(
-            r'^\s*Semana\s+(\d+)\s*[—\-:]\s*(.*)$', re.IGNORECASE)
+            r'^\s*(?:#+\s*)?Semana\s+(\d+)\s*(?:[—\-:|]\s*)?(.*)$',
+            re.IGNORECASE,
+        )
         day_re = re.compile(
-            r'^\s*(Lunes|Martes|Mi[eé]rcoles|Jueves|Viernes|S[áa]bado|Domingo)\s*\((\d+)\s*h\)\s*:\s*(.+)$',
+            r'^\s*(Lunes|Martes|Mi[eé]rcoles|Jueves|Viernes|S[áa]bado|Domingo)'
+            r'\s*(?:\((\d+)\s*h\))?\s*[:\-]\s*(.+)$',
+            re.IGNORECASE,
+        )
+        bullet_re = re.compile(r'^\s*(?:[-*•]|\d+\.)\s+(.+)$')
+        duration_re = re.compile(
+            r'(\d+)\s*(?:h|hora|horas|min|mins|minutos)\b',
             re.IGNORECASE,
         )
 
+        week_bullet_index: dict[int, int] = {}
+        default_days = [0, 2, 4]
+
+        def _clean_line(raw_line: str) -> str:
+            value = raw_line.strip()
+            value = re.sub(r'\*\*(.*?)\*\*', r'\1', value)
+            value = re.sub(r'`([^`]*)`', r'\1', value)
+            value = re.sub(r'\[(.*?)\]\((.*?)\)', r'\1', value)
+            return value.strip()
+
+        def _infer_minutes(activity: str, default_minutes: int = 90) -> int:
+            match = duration_re.search(activity)
+            if not match:
+                return default_minutes
+            value = int(match.group(1))
+            token = activity[match.start():match.end()].lower()
+            if 'h' in token or 'hora' in token:
+                return min(max(value * 60, 45), 180)
+            return min(max(value, 30), 180)
+
+        def _append_session(
+            week_no: int,
+            module_title: str,
+            activity: str,
+            weekday: int | None,
+            duration_minutes: int,
+        ) -> None:
+            nonlocal sessions
+            if not activity:
+                return
+
+            if weekday is None:
+                idx = week_bullet_index.get(week_no, 0)
+                weekday = default_days[idx % len(default_days)]
+                week_bullet_index[week_no] = idx + 1
+
+            session_date = next_monday + timedelta(
+                days=(week_no - 1) * 7 + weekday
+            )
+
+            clean_activity = _clean_line(activity)
+            sessions.append({
+                'session_id': f"{plan_id}_w{week_no}_{len(sessions) + 1}",
+                'session_date': session_date.strftime('%Y-%m-%d'),
+                'topic': clean_activity,
+                'module_title': module_title or f"Semana {week_no}",
+                'duration_minutes': duration_minutes,
+                'objectives': [
+                    f"Completar: {clean_activity}",
+                    "Tomar notas clave",
+                    "Validar comprensión con autoevaluación breve",
+                ],
+                'completed': False,
+            })
+
         for raw_line in text.splitlines():
-            line = raw_line.strip()
+            line = _clean_line(raw_line)
             if not line:
                 continue
 
@@ -840,21 +918,39 @@ class OrchestratorAgent:
             day_match = day_re.match(line)
             if day_match:
                 day_name = day_match.group(1)
-                hours = int(day_match.group(2))
+                hours_raw = day_match.group(2)
                 activity = day_match.group(3).strip()
                 day_offset = day_map.get(day_name.lower(), 0)
-                session_date = next_monday + timedelta(
-                    days=(week_number - 1) * 7 + day_offset
+                duration_minutes = (
+                    int(hours_raw) * 60
+                    if hours_raw else _infer_minutes(activity, 90)
                 )
-                sessions.append({
-                    'session_id': f"{plan_id}_w{week_number}_{len(sessions) + 1}",
-                    'session_date': session_date.strftime('%Y-%m-%d'),
-                    'topic': activity,
-                    'module_title': week_title,
-                    'duration_minutes': hours * 60,
-                    'objectives': [],
-                    'completed': False,
-                })
+                _append_session(
+                    week_no=week_number,
+                    module_title=week_title,
+                    activity=activity,
+                    weekday=day_offset,
+                    duration_minutes=duration_minutes,
+                )
+                continue
+
+            bullet_match = bullet_re.match(line)
+            if bullet_match:
+                activity = bullet_match.group(1).strip()
+                _append_session(
+                    week_no=week_number,
+                    module_title=week_title,
+                    activity=activity,
+                    weekday=None,
+                    duration_minutes=_infer_minutes(activity, 90),
+                )
+                if 'hito' in activity.lower() or 'simulacro' in activity.lower():
+                    milestones.append({
+                        'title': f"Semana {week_number}",
+                        'description': activity,
+                        'target_date': '',
+                        'achieved': False,
+                    })
                 continue
 
             lower_line = line.lower()
@@ -867,18 +963,24 @@ class OrchestratorAgent:
                 })
 
         if not sessions:
-            default_days = [0, 2, 4]
-            for idx, day_offset in enumerate(default_days, start=1):
-                session_date = next_monday + timedelta(days=day_offset)
-                sessions.append({
-                    'session_id': f"{plan_id}_s{idx}",
-                    'session_date': session_date.strftime('%Y-%m-%d'),
-                    'topic': f"Sesión {idx} de estudio",
-                    'module_title': certification,
-                    'duration_minutes': 120,
-                    'objectives': [],
-                    'completed': False,
-                })
+            fallback_topics = [
+                "Repaso de dominios oficiales de la certificación",
+                "Práctica guiada con laboratorio/sandbox",
+                "Simulacro corto + análisis de errores",
+                "Refuerzo de temas débiles detectados",
+                "Simulacro completo de preparación",
+                "Ajuste final y checklist pre-examen",
+            ]
+            for idx, topic in enumerate(fallback_topics, start=1):
+                week_no = (idx - 1) // 3 + 1
+                day_offset = default_days[(idx - 1) % len(default_days)]
+                _append_session(
+                    week_no=week_no,
+                    module_title=f"Semana {week_no}",
+                    activity=topic,
+                    weekday=day_offset,
+                    duration_minutes=120,
+                )
 
         weekly_minutes = {}
         for session in sessions:
@@ -952,6 +1054,14 @@ class OrchestratorAgent:
             f"Assessment questionnaire ready ({len(ass_result['response'])} chars, {ass_time:.2f}s)",
             {"tokens": ass_result.get('tokens', {})},
             trace_context,
+        )
+
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='AssessmentAgent',
+            phase='assessment_pending',
+            result=ass_result,
         )
 
         ass_block = self._fmt_agent_block(ass_result, 1, 1)
@@ -1099,6 +1209,16 @@ class OrchestratorAgent:
                         cert_result, dict) else cert_result
                     log_agent_response(self.logger, "CertAdvisorAgent", "certification_advice",
                                        f"Advice received ({len(cert_response)} chars)", {}, trace_context)
+                    self._persist_agent_response(
+                        student_id=student_id,
+                        session_id=trace_context.trace_id,
+                        agent_name='CertAdvisorAgent',
+                        phase='certification',
+                        result=cert_result if isinstance(cert_result, dict) else {
+                            'response': cert_response,
+                            'tokens': {},
+                        },
+                    )
                     response = (
                         f"\U0001f393 **Recomendaciones de Certificaci\xf3n**\n\n{cert_response}\n\n"
                         f"\xbfQuieres prepararte para alguna de estas certificaciones? Escr\xedbeme el nombre y empezamos."
@@ -1161,10 +1281,135 @@ class OrchestratorAgent:
                 state['next_step'] = None
                 state['phase'] = 'ready'
 
+            # HITL: await_replan_choice
+            # Tras evaluación fallida, el usuario decide entre nuevo plan por brechas
+            # o continuar el itinerario actual.
+            if state.get('next_step') == 'await_replan_choice':
+                decision = self._parse_replan_choice(message)
+                if decision == 'continue_plan':
+                    state['next_step'] = 'await_assessment_confirmation'
+                    keep_response = (
+                        "Perfecto. Continuamos con tu itinerario actual "
+                        f"({state.get('chosen_certification', 'objetivo actual')}). "
+                        "Cuando quieras una nueva evaluación escribe **'evaluar'**."
+                    )
+                    self._save_interaction_to_db(
+                        student_id=student_id,
+                        user_msg=message,
+                        assistant_msg=keep_response,
+                        phase=state.get('phase', 'assessment_complete'),
+                        session_id=trace_context.trace_id,
+                        agent_name='OrchestratorAgent',
+                    )
+                    return {
+                        'response': keep_response,
+                        'logs': [],
+                        'phase': state.get('phase', 'assessment_complete'),
+                        'trace_id': trace_context.trace_id,
+                        'tokens': {},
+                        'mode': 'azure_openai',
+                    }
+
+                if decision == 'new_plan':
+                    state['next_step'] = None
+                    preparation_context = self._build_reinforcement_context(
+                        state=state,
+                        user_message=message,
+                    )
+                    result = self._execute_sub_workflow_1(
+                        preparation_context,
+                        student_id,
+                        trace_context,
+                    )
+                    response = result['response']
+                    state['phase'] = result.get(
+                        'phase', 'preparation_complete')
+                    state['next_step'] = 'await_assessment_confirmation'
+                    if 'curator_data' in result:
+                        state['curator_data'] = result['curator_data']
+
+                    self._save_interaction_to_db(
+                        student_id=student_id,
+                        user_msg=message,
+                        assistant_msg=response,
+                        phase=state['phase'],
+                        session_id=trace_context.trace_id,
+                        tokens=result.get('tokens', {}),
+                        agent_name='StudyPlanAgent',
+                    )
+                    return {
+                        'response': response,
+                        'logs': [],
+                        'phase': state['phase'],
+                        'trace_id': trace_context.trace_id,
+                        'tokens': result.get('tokens', {}),
+                        'mode': 'azure_openai',
+                    }
+
+                ask_response = (
+                    "Para continuar de forma clara, elige una opción:\n"
+                    "1) **Nuevo plan basado en la última evaluación**\n"
+                    "2) **Continuar con el plan actual**\n\n"
+                    "Responde: *nuevo plan* o *continuar plan*."
+                )
+                self._save_interaction_to_db(
+                    student_id=student_id,
+                    user_msg=message,
+                    assistant_msg=ask_response,
+                    phase=state.get('phase', 'assessment_complete'),
+                    session_id=trace_context.trace_id,
+                    agent_name='OrchestratorAgent',
+                )
+                return {
+                    'response': ask_response,
+                    'logs': [],
+                    'phase': state.get('phase', 'assessment_complete'),
+                    'trace_id': trace_context.trace_id,
+                    'tokens': {},
+                    'mode': 'azure_openai',
+                }
+
             # HITL: await_assessment_confirmation
             # El Sub-Workflow 1 acaba de terminar y pregunto al usuario si quiere evaluarse.
             # Interceptamos aqui para no caer en el routing de intents.
             if state.get('next_step') == 'await_assessment_confirmation':
+                replan_choice = self._parse_replan_choice(message)
+                if replan_choice == 'new_plan':
+                    state['next_step'] = None
+                    preparation_context = self._build_reinforcement_context(
+                        state=state,
+                        user_message=message,
+                    )
+                    result = self._execute_sub_workflow_1(
+                        preparation_context,
+                        student_id,
+                        trace_context,
+                    )
+                    response = result['response']
+                    state['phase'] = result.get(
+                        'phase', 'preparation_complete')
+                    state['next_step'] = 'await_assessment_confirmation'
+                    if 'curator_data' in result:
+                        state['curator_data'] = result['curator_data']
+
+                    self._save_interaction_to_db(
+                        student_id=student_id,
+                        user_msg=message,
+                        assistant_msg=response,
+                        phase=state['phase'],
+                        session_id=trace_context.trace_id,
+                        tokens=result.get('tokens', {}),
+                        agent_name='StudyPlanAgent',
+                    )
+                    return {
+                        'response': response,
+                        'logs': [],
+                        'phase': state['phase'],
+                        'trace_id': trace_context.trace_id,
+                        'tokens': result.get('tokens', {}),
+                        'mode': 'azure_openai',
+                    }
+
                 _hitl_intent = self._detect_intent_with_llm(message, state)
                 if self._is_affirmative(message) or _hitl_intent.get('intent') == 'assessment':
                     state['next_step'] = None
@@ -1256,12 +1501,16 @@ class OrchestratorAgent:
                         plan_id=state.get('current_plan_id'),
                     )
                     response = result['response']
-                    state['phase'] = 'assessment_complete'
-                    state['next_step'] = (
-                        'await_cert_advisor_confirmation'
-                        if result.get('passed', False)
-                        else None
-                    )
+                    state['phase'] = result.get('phase', 'assessment_complete')
+                    if result.get('passed', False):
+                        state['next_step'] = 'await_certification_choice'
+                        state['last_assessment_feedback'] = ''
+                    else:
+                        state['next_step'] = 'await_replan_choice'
+                        state['last_assessment_feedback'] = (
+                            f"Assessment:\n{result.get('assessment_response', '')}\n\n"
+                            f"Critic:\n{result.get('critic_response', '')}"
+                        )
                     accumulated_tokens = self._sum_tokens(
                         accumulated_tokens, result)
                     execution_time = time.time() - start_time
@@ -1360,22 +1609,42 @@ class OrchestratorAgent:
                                         "Starting sub-workflow 1 (preparation)",
                                         {"intent": "preparation", "topic": detected_topic})
                 # Actualizar certificación objetivo cuando el usuario la menciona
-                if detected_topic:
-                    state['chosen_certification'] = detected_topic
+                if self._should_update_certification_goal(message, detected_topic, state):
+                    explicit_code = self._extract_certification_code(message)
+                    topic_code = self._extract_certification_code(
+                        detected_topic)
+                    chosen_topic = explicit_code or topic_code or detected_topic
+                    state['chosen_certification'] = chosen_topic
                     if persistence_tool:
                         try:
                             persistence_tool.save_student_profile(student_id, {
                                 'student_id': student_id,
-                                'chosen_certification': detected_topic,
+                                'chosen_certification': state['chosen_certification'],
                                 'phase': 'preparation',
                                 'updated_at': datetime.now().isoformat()
                             })
                         except Exception as _pe:
                             logger.warning(
                                 f"⚠️ Error guardando perfil de certificación: {_pe}")
+
+                normalized_message = message.strip().lower()
+                generic_preparation_messages = {
+                    'preparar', 'preparame', 'prepárame', 'reforzar',
+                    'refuerzo', 'continuar', 'seguir',
+                }
+                preparation_context = message
+                if (
+                    normalized_message in generic_preparation_messages
+                    and state.get('chosen_certification')
+                ):
+                    preparation_context = self._build_reinforcement_context(
+                        state=state,
+                        user_message=message,
+                    )
+
                 # Sub-workflow completo (Curator → Study Plan → Engagement) sin pausa HITL
                 result = self._execute_sub_workflow_1(
-                    message, student_id, trace_context)
+                    preparation_context, student_id, trace_context)
                 response = result['response']
                 state['phase'] = result.get('phase', 'preparation_complete')
                 state['next_step'] = 'await_assessment_confirmation'
@@ -1439,8 +1708,13 @@ class OrchestratorAgent:
                     state['phase'] = 'assessment_complete'
                     if result.get('passed', False):
                         state['next_step'] = 'await_cert_advisor_confirmation'
+                        state['last_assessment_feedback'] = ''
                     else:
-                        state['next_step'] = None
+                        state['next_step'] = 'await_replan_choice'
+                        state['last_assessment_feedback'] = (
+                            f"Assessment:\n{result.get('assessment_response', '')}\n\n"
+                            f"Critic:\n{result.get('critic_response', '')}"
+                        )
                 else:
                     result = self._execute_assessment_questionnaire(
                         message,
@@ -1464,6 +1738,16 @@ class OrchestratorAgent:
                     cert_result, dict) else cert_result
                 log_agent_response(self.logger, "CertAdvisorAgent", "certification_advice",
                                    f"Advice received ({len(cert_response)} chars)", {}, trace_context)
+                self._persist_agent_response(
+                    student_id=student_id,
+                    session_id=trace_context.trace_id,
+                    agent_name='CertAdvisorAgent',
+                    phase='certification',
+                    result=cert_result if isinstance(cert_result, dict) else {
+                        'response': cert_response,
+                        'tokens': {},
+                    },
+                )
                 response = f"🎓 **Recomendaciones de Certificación**\n\n{cert_response}\n\n¿Quieres que te ayude con la preparación para alguna certificación específica? Escríbeme el nombre o código y empezamos."
                 state['phase'] = 'certification'
                 # Esperar a que el usuario indique la cert elegida
@@ -1686,6 +1970,35 @@ class OrchestratorAgent:
             logger.warning(
                 f"\u26a0\ufe0f Error persistiendo interacción HITL: {_pe}")
 
+    def _persist_agent_response(
+        self,
+        student_id: str,
+        session_id: str,
+        agent_name: str,
+        phase: str,
+        result: dict,
+    ) -> None:
+        """Guarda en BD la salida de un agente especializado."""
+        if not persistence_tool or not isinstance(result, dict):
+            return
+
+        try:
+            persistence_tool.save_conversation_message(
+                student_id=student_id,
+                role='assistant',
+                content=str(result.get('response', '')),
+                session_id=session_id,
+                agent_name=agent_name,
+                phase=phase,
+                tokens=result.get('tokens', {}),
+            )
+        except Exception as _pe:
+            logger.warning(
+                "⚠️ Error persistiendo respuesta de %s: %s",
+                agent_name,
+                _pe,
+            )
+
     def _execute_sub_workflow_1(self, context: str, student_id: str, trace_context: TraceContext) -> dict:
         """Ejecuta Sub-Workflow #1: Curator → [human-in-loop] → Study Plan → Engagement."""
         log_workflow_transition(
@@ -1717,6 +2030,14 @@ class OrchestratorAgent:
         log_agent_response(self.logger, "CuratorAgent", "curation_complete",
                            f"Curated paths ready ({len(curator_result['response'])} chars, {curator_time:.2f}s)",
                            {"tokens": curator_result.get('tokens', {})}, trace_context)
+
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='CuratorAgent',
+            phase='preparation',
+            result=curator_result,
+        )
 
         curator_block = self._fmt_agent_block(curator_result, 1, 3)
 
@@ -1756,6 +2077,14 @@ class OrchestratorAgent:
                            f"Study plan ready ({len(sp_result['response'])} chars, {sp_time:.2f}s)",
                            {"tokens": sp_result.get('tokens', {})}, trace_context)
 
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='StudyPlanAgent',
+            phase='preparation',
+            result=sp_result,
+        )
+
         sp_block = self._fmt_agent_block(sp_result, 2, 3)
         self._emit_partial_response(
             sp_block, loading_next="🎯 Engagement Agent en proceso...")
@@ -1785,6 +2114,14 @@ class OrchestratorAgent:
         log_agent_response(self.logger, "EngagementAgent", "engagement_complete",
                            f"Engagement setup ready ({len(eng_result['response'])} chars, {eng_time:.2f}s)",
                            {"tokens": eng_result.get('tokens', {})}, trace_context)
+
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='EngagementAgent',
+            phase='preparation_complete',
+            result=eng_result,
+        )
 
         eng_block = self._fmt_agent_block(eng_result, 3, 3)
 
@@ -1857,6 +2194,14 @@ class OrchestratorAgent:
                            f"Study plan ready ({len(sp_result['response'])} chars, {sp_time:.2f}s)",
                            {"tokens": sp_result.get('tokens', {})}, trace_context)
 
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='StudyPlanAgent',
+            phase='preparation',
+            result=sp_result,
+        )
+
         # Emitir el resultado del Study Plan de inmediato para mejor UX
         # (el usuario lo ve sin esperar al Engagement Agent)
         sp_block = self._fmt_agent_block(sp_result, 1, 2)
@@ -1892,6 +2237,14 @@ class OrchestratorAgent:
         log_agent_response(self.logger, "EngagementAgent", "engagement_complete",
                            f"Engagement setup ready ({len(eng_result['response'])} chars, {eng_time:.2f}s)",
                            {"tokens": eng_result.get('tokens', {})}, trace_context)
+
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='EngagementAgent',
+            phase='preparation_complete',
+            result=eng_result,
+        )
 
         eng_block = self._fmt_agent_block(eng_result, 2, 2)
 
@@ -1953,6 +2306,14 @@ class OrchestratorAgent:
                            f"Assessment ready ({len(ass_result['response'])} chars, {ass_time:.2f}s)",
                            {"tokens": ass_result.get('tokens', {})}, trace_context)
 
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='AssessmentAgent',
+            phase='assessment',
+            result=ass_result,
+        )
+
         # Paso 2: Critic Agent
         log_agent_action(self.logger, "OrchestratorAgent", "delegation",
                          "Delegating to CriticAgent for analysis", {"target_agent": "critic"}, trace_context)
@@ -1976,6 +2337,14 @@ class OrchestratorAgent:
                            f"Critic analysis ready ({len(cr_result['response'])} chars, {cr_time:.2f}s)",
                            {"tokens": cr_result.get('tokens', {})}, trace_context)
 
+        self._persist_agent_response(
+            student_id=student_id,
+            session_id=trace_context.trace_id,
+            agent_name='CriticAgent',
+            phase='assessment_complete',
+            result=cr_result,
+        )
+
         # Paso 3: Decision
         passed = self._evaluate_assessment_results(ass_result, cr_result)
 
@@ -1989,15 +2358,47 @@ class OrchestratorAgent:
         ass_block = self._fmt_agent_block(ass_result, 1, 2)
         cr_block = self._fmt_agent_block(cr_result, 2, 2)
         total_time = ass_time + cr_time
+        cert_result = None
+        cert_block = ""
+
+        if passed:
+            cert_context = (
+                "El estudiante ha aprobado la evaluación técnica.\n"
+                f"Certificación/ruta objetivo actual: "
+                f"{self.conversation_state.get(student_id, {}).get('chosen_certification', 'Business Central')}\n\n"
+                f"Resultado del Assessment Agent:\n{ass_result.get('response', '')}\n\n"
+                f"Análisis del Critic Agent:\n{cr_result.get('response', '')}\n\n"
+                "Recomienda la certificación Microsoft más adecuada y planifica el examen con acciones concretas."
+            )
+            self._emit_agent_active('cert_advisor', '🎓 Cert Advisor Agent')
+            cert_result = self.agents['cert_advisor'].execute(
+                cert_context,
+                student_id,
+            )
+            cert_result = cert_result if isinstance(cert_result, dict) else {
+                'response': cert_result,
+                'agent_name': 'Cert Advisor Agent',
+                'tools_used': [],
+            }
+            self._persist_agent_response(
+                student_id=student_id,
+                session_id=trace_context.trace_id,
+                agent_name='CertAdvisorAgent',
+                phase='certification',
+                result=cert_result,
+            )
+            cert_block = self._fmt_agent_block(cert_result, 3, 3)
 
         if passed:
             response = (
-                f"\U0001f9e0 **Sub-Workflow #2: Evaluación completada** (2/2 agentes, {total_time:.1f}s)\n"
+                f"\U0001f9e0 **Sub-Workflow #2: Evaluación completada** ({'3/3' if cert_result else '2/2'} agentes, {total_time:.1f}s)\n"
                 f"Veredicto del Orchestrator: **APROBADO ✅**\n\n"
                 + ass_block + "\n\n"
-                + cr_block +
+                + cr_block + "\n\n"
+                + cert_block +
                 f"\n\n---\n"
-                f"🎉 ¡Felicitaciones! Estás listo para el examen. ¿Quieres que el **Cert Advisor Agent** te recomiende el examen Microsoft ideal para tu perfil?"
+                "🎉 ¡Felicitaciones! Ya tienes recomendación de certificación y planificación de examen. "
+                "Si quieres, te preparo el plan detallado para esa fecha."
             )
         else:
             response = (
@@ -2006,8 +2407,10 @@ class OrchestratorAgent:
                 + ass_block + "\n\n"
                 + cr_block +
                 f"\n\n---\n"
-                "📌 No se reinicia el proceso automáticamente.\n"
-                "Si quieres refinar tu plan con las brechas detectadas, escribe **'preparar'**."
+                "📌 Elige cómo continuar:\n"
+                "1) **Nuevo plan basado en la última evaluación**\n"
+                "2) **Continuar con el plan actual**\n\n"
+                "Responde: **nuevo plan** o **continuar plan**."
             )
 
         print(
@@ -2040,7 +2443,15 @@ class OrchestratorAgent:
             except Exception as _pe:
                 print(f"[PERSISTENCE] Error guardando evaluaci\xf3n: {_pe}")
 
-        return {'response': response, 'passed': passed, 'phase': 'assessment_complete', 'tokens': self._sum_tokens(ass_result, cr_result)}
+        return {
+            'response': response,
+            'passed': passed,
+            'phase': 'certification' if passed else 'assessment_complete',
+            'tokens': self._sum_tokens(ass_result, cr_result, cert_result),
+            'assessment_response': ass_result.get('response', ''),
+            'critic_response': cr_result.get('response', ''),
+            'cert_advisor_response': cert_result.get('response', '') if isinstance(cert_result, dict) else '',
+        }
 
     def _get_context_aware_response(self, message_lower: str, current_phase: str) -> str:
         """Genera respuesta basada en el contexto de la conversación actual."""
@@ -2054,7 +2465,11 @@ class OrchestratorAgent:
             return "¡Buena pregunta! Puedo ayudarte con preparación, evaluación o certificaciones. ¿Qué te interesa específicamente?"
 
     def _evaluate_assessment_results(self, assessment_result, critic_result):
-        """Evalúa si el estudiante pasó la evaluación usando el LLM."""
+        """Evalúa si el estudiante pasó la evaluación.
+
+        Regla principal: aprobado cuando hay al menos 3 respuestas correctas
+        sobre 5 preguntas (>= 60%).
+        """
         import os as _os
         import json as _json
 
@@ -2062,6 +2477,35 @@ class OrchestratorAgent:
             assessment_result, dict) else str(assessment_result)
         critic_text = critic_result.get('response', '') if isinstance(
             critic_result, dict) else str(critic_result)
+
+        correct_matches = re.findall(
+            r'evaluaci[oó]n\s*:\s*✅|tu\s+respuesta\s*:\s*[a-d]\)\s*\n?\s*evaluaci[oó]n\s*:\s*✅',
+            assessment_text,
+            flags=re.IGNORECASE,
+        )
+        incorrect_matches = re.findall(
+            r'evaluaci[oó]n\s*:\s*❌|tu\s+respuesta\s*:\s*[a-d]\)\s*\n?\s*evaluaci[oó]n\s*:\s*❌',
+            assessment_text,
+            flags=re.IGNORECASE,
+        )
+        correct_count = len(correct_matches)
+        incorrect_count = len(incorrect_matches)
+        answered_count = correct_count + incorrect_count
+
+        if answered_count > 0:
+            threshold = max(3, int((answered_count * 0.6) + 0.9999))
+            return correct_count >= threshold
+
+        ready_score_match = re.search(
+            r'(?:score\s+estimado\s+de\s+ready-for-exam|ready-for-exam|listo\s+para\s+examen)\s*[:=]?\s*(\d{1,3})(?:\s*/\s*100|\s*%)?',
+            assessment_text,
+            re.IGNORECASE,
+        )
+        if ready_score_match:
+            try:
+                return float(ready_score_match.group(1)) >= 60.0
+            except (TypeError, ValueError):
+                pass
 
         endpoint = _os.getenv('AZURE_OPENAI_ENDPOINT', '')
         api_key = _os.getenv('AZURE_OPENAI_API_KEY', '')
@@ -2149,1969 +2593,3 @@ class OrchestratorAgent:
         if student_id:
             return [log for log in self.interaction_logs if log['student_id'] == student_id]
         return self.interaction_logs
-
-
-# Crear instancia del orchestrator DESPUÉS de cargar .env
-orchestrator_agent = ExternalOrchestratorAgent()
-
-
-# Configuración de logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Cargar variables de entorno desde .env (por si acaso)
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-    logger.info("Archivo .env cargado correctamente")
-except ImportError:
-    logger.warning(
-        "python-dotenv no disponible - usando variables de entorno del sistema")
-
-# Configuración de Telemetría (Azure Application Insights)
-try:
-    from azure.monitor.opentelemetry import configure_azure_monitor
-
-    connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
-    if connection_string:
-        configure_azure_monitor(
-            connection_string=connection_string,
-            disable_metric=True  # Deshabilitar métricas automáticas para reducir envío continuo
-        )
-        logger.info(
-            "Azure Application Insights telemetry configurado (métricas automáticas deshabilitadas)")
-
-        # Reducir logging detallado de Azure SDK para evitar spam en consola
-        logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(
-            logging.WARNING)
-        logging.getLogger('azure.monitor.opentelemetry').setLevel(
-            logging.WARNING)
-        logging.getLogger('azure.monitor.opentelemetry.exporter').setLevel(
-            logging.WARNING)
-        logger.info(
-            "Logging de Azure SDK reducido a WARNING para minimizar output en consola")
-    else:
-        logger.warning(
-            "APPLICATIONINSIGHTS_CONNECTION_STRING no configurada - telemetry deshabilitado")
-except ImportError:
-    logger.warning(
-        "Azure Monitor OpenTelemetry no disponible - telemetry deshabilitado")
-
-
-# Crear aplicación Flask
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv(
-    'FLASK_SECRET_KEY', 'aep-certmaster-secret-key-dev')
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-
-@app.before_request
-def start_request_trace():
-    """Inicializa contexto de trazabilidad por request."""
-    student_id = (
-        session.get('student_id')
-        or request.headers.get("X-Student-Id")
-        or request.args.get("student_id")
-        or "anonymous"
-    )
-    session_id = request.headers.get("X-Session-Id", "")
-    g.trace_context = create_trace_context(
-        user_id=student_id, session_id=session_id)
-    log_agent_action(
-        logger,
-        "Request",
-        "request_start",
-        f"{request.method} {request.path}",
-        {"remote_addr": request.remote_addr},
-        g.trace_context,
-    )
-
-
-@app.after_request
-def end_request_trace(response: Response):
-    """Cierra contexto de trazabilidad por request."""
-    trace_context = getattr(g, "trace_context", None)
-    if trace_context:
-        log_agent_action(
-            logger,
-            "Request",
-            "request_end",
-            f"{request.method} {request.path}",
-            {"status_code": response.status_code},
-            trace_context,
-        )
-        save_trace_context(trace_context)
-    return response
-
-
-# Almacenamiento global de agentes
-agents = {}
-chat_history = {}
-
-
-def initialize_agents():
-    """Inicializar el sistema de agentes (ahora usa OrchestratorAgent)."""
-    global agents
-
-    try:
-        logger.info("Inicializando sistema de agentes con Orchestrator...")
-
-        # Los agentes ahora están disponibles a través del OrchestratorAgent
-        # No necesitamos inicializar agentes individuales
-        agents = {}  # Mantener vacío ya que usamos orchestrator_agent global
-
-        logger.info(
-            "✅ Sistema de agentes inicializado correctamente (modo orchestrator)")
-
-        # Inicializar historial de chat vacío
-        global chat_history
-        chat_history = {}
-
-        logger.info("✅ Historial de chat inicializado")
-
-    except Exception as e:
-        logger.error(f"❌ Error inicializando agentes: {e}")
-        raise
-        for agent_name in agents.keys():
-            chat_history[agent_name] = []
-
-    except Exception as e:
-        logger.error(f"❌ Error inicializando agentes: {e}")
-        agents = {}
-
-
-# Inicializar agentes al importar el módulo
-initialize_agents()
-
-
-@app.route('/')
-def index():
-    """Página principal del dashboard con acceso al orchestrator."""
-    if not session.get('user_id'):
-        return redirect(url_for('login_page'))
-    return render_template('index.html')
-
-
-@app.route('/chat')
-def chat_page():
-    """Página de chat con el orchestrator agent."""
-    agent_info = {
-        'name': 'orchestrator',
-        'display_name': '🤖 AEP CertMaster Assistant',
-        'description': 'Asistente inteligente que coordina todos los agentes especializados para tu proceso de certificación'
-    }
-    return render_template('chat.html', agent=agent_info)
-
-
-@app.route('/logs')
-def logs_page():
-    """Página para ver los logs de interacciones."""
-    return render_template('logs.html')
-
-
-@app.route('/health')
-def health_page():
-    """Página dedicada para mostrar el estado del sistema."""
-    return render_template('health.html')
-
-
-@app.route('/api/health')
-def health_check():
-    """Endpoint de verificación de salud."""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'orchestrator': 'active',
-        'specialized_agents': list(orchestrator_agent.agents.keys()),
-        'total_interactions': len(orchestrator_agent.interaction_logs)
-    })
-
-
-@app.route('/api/agents')
-def get_agents():
-    """Obtener lista de agentes disponibles."""
-    agents_info = []
-    for name, agent in agents.items():
-        agents_info.append({
-            'id': name,
-            'name': {
-                'curator': '🏛️ Curator Agent',
-                'study_plan': '📚 Study Plan Agent',
-                'engagement': '🎯 Engagement Agent',
-                'assessment': '📝 Assessment Agent',
-                'critic': '🔍 Critic Agent',
-                'cert_advisor': '🎓 Cert Advisor Agent'
-            }.get(name, name),
-            'description': {
-                'curator': 'Especialista en gestionar itinerarios de aprendizaje relevantes',
-                'study_plan': 'Especialista en crear planes de estudio personalizados',
-                'engagement': 'Especialista en motivación y recordatorios estudiantiles',
-                'assessment': 'Especialista en evaluaciones inteligentes',
-                'critic': 'Especialista en validación y crítica de calidad',
-                'cert_advisor': 'Especialista en asesoramiento de certificaciones'
-            }.get(name, 'Agente del sistema AEP CertMaster'),
-            'status': 'active'
-        })
-
-    return jsonify({'agents': agents_info})
-
-
-@app.route('/api/agents/active')
-def get_active_agent():
-    """Obtener información del agente activo actualmente."""
-    # En un sistema real, esto vendría del estado del orchestrator
-    # Por ahora, devolver el último agente usado o el orchestrator por defecto
-    active_agent = {
-        'id': 'orchestrator',
-        'name': '🤖 Orchestrator Agent',
-        'description': 'Coordinador principal del sistema multi-agente',
-        'status': 'active',
-        'last_activity': datetime.now().isoformat(),
-        'current_task': 'Esperando instrucciones del usuario'
-    }
-    return jsonify({'active_agent': active_agent})
-
-
-@app.route('/api/agents/reasoning')
-def get_agent_reasoning():
-    """Obtener el razonamiento actual del agente activo desde el estado real del orquestador."""
-    student_id = session.get('student_id', 'anonymous')
-    state = orchestrator_agent.conversation_state.get(student_id, {})
-
-    current_phase = state.get('phase', 'ready')
-    next_step = state.get('next_step', '')
-    chosen_cert = state.get('chosen_certification', '')
-
-    # Construir decision_process desde el estado real
-    decision_process = []
-    if current_phase == 'initial' or current_phase == 'ready':
-        decision_process = [
-            '1. Esperando mensaje del usuario',
-            '2. Clasificar intención con LLM',
-            '3. Seleccionar sub-workflow apropiado',
-            '4. Activar agente especializado'
-        ]
-    elif current_phase == 'preparation':
-        decision_process = [
-            f'1. Fase: preparación activa',
-            f'2. Certificación seleccionada: {chosen_cert or "pendiente"}',
-            f'3. Siguiente paso HITL: {next_step or "ninguno"}',
-            '4. Coordinando Curator → StudyPlan → Engagement'
-        ]
-    elif current_phase == 'assessment':
-        decision_process = [
-            '1. Fase: evaluación activa',
-            f'2. Certificación: {chosen_cert or "N/A"}',
-            f'3. Estado: {next_step or "procesando"}',
-            '4. Coordinando Assessment → Critic'
-        ]
-    elif current_phase == 'certification':
-        decision_process = [
-            '1. Fase: asesoramiento de certificación',
-            f'2. Certificación recomendada: {chosen_cert or "en curso"}',
-            '3. Cert Advisor analizando opciones',
-            '4. Generando roadmap personalizado'
-        ]
-    else:
-        decision_process = [
-            f'1. Fase actual: {current_phase}', '2. Procesando...']
-
-    # Mapa de fase → agente activo
-    phase_agent_map = {
-        'preparation': 'curator',
-        'assessment': 'assessment',
-        'certification': 'cert_advisor',
-        'ready': 'orchestrator',
-        'initial': 'orchestrator'
-    }
-    active_agent_id = phase_agent_map.get(current_phase, 'orchestrator')
-    agent_labels = {
-        'orchestrator': 'Orchestrator Agent',
-        'curator': 'Curator Agent',
-        'study_plan': 'Study Plan Agent',
-        'engagement': 'Engagement Agent',
-        'assessment': 'Assessment Agent',
-        'critic': 'Critic Agent',
-        'cert_advisor': 'Cert Advisor Agent'
-    }
-
-    reasoning = {
-        'agent_id': active_agent_id,
-        'agent_name': agent_labels.get(active_agent_id, 'Orchestrator Agent'),
-        'current_phase': current_phase,
-        'current_thought': f'Fase: {current_phase} | Siguiente: {next_step or "determinando siguiente paso"}',
-        'decision_process': decision_process,
-        'chosen_certification': chosen_cert,
-        'next_step': next_step,
-        'timestamp': datetime.now().isoformat()
-    }
-    return jsonify({'reasoning': reasoning})
-
-
-@app.route('/api/agents/workflow')
-def get_agents_workflow():
-    """Obtener el workflow actual de agentes desde el estado real del orquestador."""
-    student_id = session.get('student_id', 'anonymous')
-    state = orchestrator_agent.conversation_state.get(student_id, {})
-    current_phase = state.get('phase', 'ready')
-    next_step = state.get('next_step', '')
-    chosen_cert = state.get('chosen_certification', '')
-    agent_labels = {
-        'orchestrator': '🤖 OrchestratorAgent',
-        'curator': '🏛️ CuratorAgent',
-        'study_plan': '📚 StudyPlanAgent',
-        'engagement': '🎯 EngagementAgent',
-        'assessment': '📝 AssessmentAgent',
-        'critic': '🔍 CriticAgent',
-        'cert_advisor': '🎓 CertAdvisorAgent'
-    }
-    # Determinar estado de cada paso según la fase actual
-    phase_order = ['initial', 'preparation', 'assessment', 'certification']
-    phase_idx = phase_order.index(
-        current_phase) if current_phase in phase_order else 0
-
-    def step_status(required_phase_idx):
-        if phase_idx > required_phase_idx:
-            return 'completed'
-        if phase_idx == required_phase_idx:
-            return 'active'
-        return 'pending'
-
-    workflow_steps = [
-        {
-            'step': 1,
-            'agent': agent_labels['orchestrator'],
-            'action': 'Análisis de intención del usuario (LLM)',
-            'status': 'completed' if phase_idx >= 0 else 'pending',
-        },
-        {
-            'step': 2,
-            'agent': agent_labels['curator'],
-            'action': f'Curación de itinerarios{" → " + chosen_cert if chosen_cert else ""}',
-            'status': step_status(1),
-        },
-        {
-            'step': 3,
-            'agent': f"{agent_labels['study_plan']} + {agent_labels['engagement']}",
-            'action': 'Plan de estudio + Motivación',
-            'status': step_status(1),
-        },
-        {
-            'step': 4,
-            'agent': f"{agent_labels['assessment']} + {agent_labels['critic']}",
-            'action': f'Evaluación adaptativa{" (" + next_step + ")" if next_step else ""}',
-            'status': step_status(2),
-        },
-        {
-            'step': 5,
-            'agent': agent_labels['cert_advisor'],
-            'action': 'Advisory y roadmap de certificaciones',
-            'status': step_status(3),
-        }
-    ]
-    completed_steps = sum(
-        1 for s in workflow_steps if s['status'] == 'completed')
-
-    workflow = {
-        'current_phase': current_phase,
-        'next_step': next_step,
-        'chosen_certification': chosen_cert,
-        'active_agent': f'{current_phase}_agent',
-        'workflow_steps': workflow_steps,
-        'total_steps': len(workflow_steps),
-        'completed_steps': completed_steps
-    }
-    return jsonify({'workflow': workflow})
-
-
-@app.route('/api/agents/metrics')
-def get_agents_metrics():
-    """Obtener métricas de rendimiento de agentes."""
-    student_id = (
-        request.args.get('student_id')
-        or session.get('student_id')
-        or 'demo_student'
-    )
-
-    print(
-        "🔍 API métricas llamada - "
-        f"student_id={student_id}, "
-        f"get_metrics_collector disponible: {get_metrics_collector is not None}"
-    )
-
-    persisted_stats = {}
-    if persistence_tool:
-        try:
-            persisted_stats = persistence_tool.get_student_session_stats(
-                student_id)
-        except Exception as e:
-            logger.warning(
-                "No se pudieron recuperar métricas persistidas para %s: %s",
-                student_id,
-                e,
-            )
-
-    if get_metrics_collector:
-        # Usar métricas reales del colector
-        collector = get_metrics_collector()
-        all_metrics = collector.get_all_metrics()
-        summary_stats = collector.get_summary_stats()
-
-        print(
-            f"📊 Métricas obtenidas: {len(all_metrics)} agentes, {summary_stats.get('total_calls', 0)} llamadas totales")
-
-        # Si no hay métricas reales, devolver estructura de respaldo
-        if not all_metrics:
-            total_interactions = int(
-                persisted_stats.get('total_interactions', 0) or 0)
-            total_tokens = int(persisted_stats.get('total_tokens', 0) or 0)
-            return jsonify({
-                'metrics': {
-                    'overall': {
-                        'total_interactions': total_interactions,
-                        'success_rate': 0.0,
-                        'average_response_time': '0.0s',
-                        'total_tokens_used': total_tokens
-                    },
-                    'agents': {},
-                    'timestamp': datetime.now().isoformat(),
-                    'student_id': student_id,
-                }
-            })
-
-        total_interactions = summary_stats.get('total_calls', 0)
-        total_tokens_used = summary_stats.get('total_tokens_used', 0)
-        if persisted_stats:
-            total_interactions = max(
-                int(total_interactions or 0),
-                int(persisted_stats.get('total_interactions', 0) or 0),
-            )
-            total_tokens_used = max(
-                int(total_tokens_used or 0),
-                int(persisted_stats.get('total_tokens', 0) or 0),
-            )
-
-        metrics = {
-            'overall': {
-                'total_interactions': total_interactions,
-                'success_rate': summary_stats.get('overall_success_rate', 0),
-                'average_response_time': f"{summary_stats.get('average_response_time', 0):.2f}s",
-                'total_tokens_used': total_tokens_used
-            },
-            'agents': all_metrics,
-            'timestamp': datetime.now().isoformat(),
-            'student_id': student_id,
-        }
-    else:
-        # Sin colector de métricas disponible
-        print("❌ Colector de métricas no disponible")
-        total_interactions = int(
-            persisted_stats.get('total_interactions', 0) or 0)
-        total_tokens = int(persisted_stats.get('total_tokens', 0) or 0)
-        return jsonify({
-            'metrics': {
-                'overall': {
-                    'total_interactions': total_interactions,
-                    'success_rate': 0.0,
-                    'average_response_time': '0.0s',
-                    'total_tokens_used': total_tokens
-                },
-                'agents': {},
-                'timestamp': datetime.now().isoformat(),
-                'student_id': student_id,
-            }
-        })
-    return jsonify({'metrics': metrics})
-
-
-@app.route('/api/chat', methods=['POST'])
-def chat_with_orchestrator():
-    """Endpoint para chatear con el orchestrator agent."""
-    try:
-        data = request.get_json()
-        message = str(data.get('message', '')).strip()
-        student_id = (
-            session.get('student_id')
-            or data.get('student_id')
-            or 'demo_student'
-        )
-
-        is_valid, error_message, cleaned_message = validate_user_message(
-            message)
-        if not is_valid:
-            return jsonify({'error': error_message}), 400
-
-        # Ejecutar el orchestrator
-        result = orchestrator_agent.execute(
-            cleaned_message, student_id=student_id)
-
-        return jsonify({
-            'response': result['response'],
-            'agent': 'orchestrator',
-            'phase': result['phase'],
-            'logs': result['logs'],
-            'tokens': result.get('tokens', {}),
-            'timestamp': datetime.now().isoformat()
-        })
-
-    except Exception as e:
-        logger.error(f"Error en chat con orchestrator: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/chat/history')
-def get_chat_history():
-    """Obtener historial de chat del orchestrator."""
-    student_id = request.args.get('student_id', 'demo_student')
-    history = orchestrator_agent.get_interaction_logs(student_id)
-    return jsonify({'history': history[-20:]})  # Últimos 20
-
-
-@app.route('/api/logs', methods=['GET', 'DELETE'])
-def get_logs():
-    """Obtener logs de interacciones desde la base de datos persistida."""
-    if request.method == 'DELETE':
-        if not persistence_tool:
-            return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
-
-        student_id = (
-            request.args.get('student_id')
-            or session.get('student_id')
-            or 'demo_student'
-        )
-
-        try:
-            deleted_messages = persistence_tool.delete_conversation_history(
-                student_id)
-            return jsonify({
-                'success': True,
-                'student_id': student_id,
-                'deleted_messages': deleted_messages,
-            })
-        except Exception as e:
-            logger.error(f"Error borrando logs para {student_id}: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
-
-    import re as _re
-    student_id = (
-        request.args.get('student_id')
-        or session.get('student_id')
-    )
-    if not persistence_tool or not student_id:
-        # Fallback a logs en memoria (solo sesión actual)
-        logs = orchestrator_agent.get_interaction_logs(student_id)
-        return jsonify({'logs': logs})
-
-    rows = persistence_tool.get_conversation_history(
-        student_id, limit=200)
-    # La consulta devuelve DESC → invertir para obtener orden cronológico
-    rows = list(reversed(rows))
-
-    result = []
-    i = 0
-    while i < len(rows):
-        row = rows[i]
-        if row['role'] == 'user':
-            user_msg = row['content']
-            user_ts = row['created_at']
-            user_phase = row.get('phase') or ''
-            # Buscar respuesta del asistente siguiente
-            asst_row = None
-            if i + 1 < len(rows) and rows[i + 1]['role'] == 'assistant':
-                asst_row = rows[i + 1]
-            agent_name = (
-                (asst_row.get('agent_name') or 'OrchestratorAgent')
-                if asst_row else 'OrchestratorAgent'
-            )
-            result.append({
-                'timestamp': user_ts,
-                'student_id': student_id,
-                'phase': user_phase,
-                'agent_name': agent_name,
-                'user_message': user_msg,
-                'agent_response': asst_row['content'] if asst_row else '',
-            })
-            i += 2 if asst_row else 1
-        else:
-            # Respuesta de asistente sin mensaje de usuario previo (inicio de sesión)
-            result.append({
-                'timestamp': row['created_at'],
-                'student_id': student_id,
-                'phase': row.get('phase') or '',
-                'agent_name': row.get('agent_name') or 'OrchestratorAgent',
-                'user_message': '',
-                'agent_response': row['content'],
-            })
-            i += 1
-
-    return jsonify({'logs': result})
-
-
-@app.route('/api/student/history')
-def get_student_history():
-    """Obtener historial de conversación persistido en la base de datos."""
-    student_id = request.args.get('student_id', 'demo_student')
-    limit = int(request.args.get('limit', 50))
-    if not persistence_tool:
-        return jsonify({'error': 'Persistencia no disponible'}), 503
-    history = persistence_tool.get_conversation_history(
-        student_id, limit=limit)
-    return jsonify({'student_id': student_id, 'history': history, 'count': len(history)})
-
-
-@app.route('/api/student/email', methods=['POST'])
-def register_student_email():
-    """Registrar o actualizar el email de un estudiante para recordatorios."""
-    try:
-        data = request.get_json()
-        student_id = data.get('student_id', '').strip()
-        email = data.get('email', '').strip()
-        if not student_id or not email:
-            return jsonify({'error': 'student_id y email son obligatorios'}), 400
-        if not persistence_tool:
-            return jsonify({'error': 'Persistencia no disponible'}), 503
-        success = persistence_tool.save_email(
-            student_id=student_id,
-            email=email,
-            name=data.get('name'),
-            notify_reminders=data.get('notify_reminders', True),
-            notify_progress=data.get('notify_progress', True),
-            notify_assessments=data.get('notify_assessments', True)
-        )
-        if success:
-            return jsonify({'message': f'Email registrado: {email}', 'student_id': student_id})
-        return jsonify({'error': 'No se pudo guardar el email'}), 500
-    except Exception as e:
-        logger.error(f"Error registrando email: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/student/email/<student_id>')
-def get_student_email(student_id):
-    """Obtener el email registrado de un estudiante."""
-    if not persistence_tool:
-        return jsonify({'error': 'Persistencia no disponible'}), 503
-    record = persistence_tool.get_email(student_id)
-    if record:
-        return jsonify({'email_record': record})
-    return jsonify({'error': 'Email no encontrado para este estudiante'}), 404
-
-
-@app.route('/api/student/session-stats/<student_id>')
-def get_student_session_stats(student_id):
-    """Obtener estadísticas de sesiones de un estudiante (tokens, interacciones)."""
-    if not persistence_tool:
-        return jsonify({'error': 'Persistencia no disponible'}), 503
-    stats = persistence_tool.get_student_session_stats(student_id)
-    return jsonify({'student_id': student_id, 'session_stats': stats})
-
-
-# =============================================================================
-# AUTENTICACIÓN
-# =============================================================================
-
-def login_required(f):
-    """Decorador que requiere sesión activa. Redirige a /login si no está autenticado."""
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get('user_id'):
-            # Si es petición API devuelve 401, si es página redirige
-            if request.path.startswith('/api/'):
-                return jsonify({'error': 'No autenticado'}), 401
-            return redirect(url_for('login_page'))
-        return f(*args, **kwargs)
-    return decorated
-
-
-@app.route('/login')
-def login_page():
-    """Página de login."""
-    if session.get('user_id'):
-        return redirect(url_for('index'))
-    return render_template('login.html')
-
-
-@app.route('/auth/register', methods=['POST'])
-def auth_register():
-    """Registrar nuevo usuario."""
-    if not persistence_tool:
-        return jsonify({'error': 'El sistema de usuarios no está disponible. Contacta al administrador.'}), 503
-    try:
-        data = request.get_json()
-        username = (data.get('username') or '').strip()
-        email = (data.get('email') or '').strip().lower()
-        password = data.get('password') or ''
-        name = (data.get('name') or '').strip()
-
-        if not username or not email or not password:
-            return jsonify({'error': 'username, email y password son obligatorios'}), 400
-        if len(password) < 6:
-            return jsonify({'error': 'La contraseña debe tener al menos 6 caracteres'}), 400
-
-        user_id = persistence_tool.create_user(
-            username=username, email=email, password=password,
-            name=name or username, role='student'
-        )
-        if not user_id:
-            return jsonify({'error': 'El usuario o email ya está registrado'}), 409
-
-        user = persistence_tool.get_user_by_id(user_id)
-        session['user_id'] = user_id
-        session['username'] = user['username']
-        session['name'] = user['name']
-        session['role'] = user['role']
-        session['student_id'] = user['student_id']
-        return jsonify({'message': 'Usuario creado correctamente', 'user': {
-            'user_id': user_id,
-            'username': user['username'],
-            'name': user['name'],
-            'role': user['role'],
-            'student_id': user['student_id']
-        }}), 201
-    except Exception as e:
-        logger.error(f'Error en registro: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/auth/login', methods=['POST'])
-def auth_login():
-    """Iniciar sesión."""
-    if not persistence_tool:
-        return jsonify({'error': 'El sistema de usuarios no está disponible. Contacta al administrador.'}), 503
-    try:
-        data = request.get_json()
-        username_or_email = (data.get('username')
-                             or data.get('email') or '').strip()
-        password = data.get('password') or ''
-
-        if not username_or_email or not password:
-            return jsonify({'error': 'Usuario/email y contraseña son obligatorios'}), 400
-
-        user = persistence_tool.authenticate_user(username_or_email, password)
-        if not user:
-            return jsonify({'error': 'Credenciales incorrectas'}), 401
-
-        session['user_id'] = user['user_id']
-        session['username'] = user['username']
-        session['name'] = user['name']
-        session['role'] = user['role']
-        session['student_id'] = user['student_id']
-        return jsonify({'message': 'Sesión iniciada', 'user': {
-            'user_id': user['user_id'],
-            'username': user['username'],
-            'name': user['name'],
-            'role': user['role'],
-            'student_id': user['student_id']
-        }})
-    except Exception as e:
-        logger.error(f'Error en login: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/auth/logout', methods=['POST', 'GET'])
-def auth_logout():
-    """Cerrar sesión."""
-    session.clear()
-    return redirect(url_for('login_page'))
-
-
-@app.route('/auth/me')
-def auth_me():
-    """Devuelve los datos del usuario autenticado actualmente."""
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({'error': 'No autenticado'}), 401
-    return jsonify({'user': {
-        'user_id': user_id,
-        'username': session.get('username'),
-        'name': session.get('name'),
-        'role': session.get('role'),
-        'student_id': session.get('student_id')
-    }})
-
-
-@app.route('/auth/users')
-def auth_list_users():
-    """Lista usuarios (solo admin)."""
-    if session.get('role') != 'admin':
-        return jsonify({'error': 'Acceso denegado'}), 403
-    if not persistence_tool:
-        return jsonify({'error': 'Persistencia no disponible'}), 503
-    users = persistence_tool.list_users()
-    return jsonify({'users': users})
-
-
-@socketio.on('connect')
-def handle_connect():
-    """Manejar conexión WebSocket."""
-    logger.info('Cliente conectado via WebSocket')
-    emit('status', {'message': 'Conectado al servidor'})
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Manejar desconexión WebSocket."""
-    logger.info('Cliente desconectado')
-
-
-@socketio.on('chat_message')
-def handle_chat_message(data):
-    """Manejar mensajes de chat via WebSocket con el orchestrator."""
-    try:
-        from flask import request as flask_request
-        message = str(data.get('message', '')).strip()
-        # Preferir el usuario autenticado en la sesión Flask;
-        # el cliente puede pasar student_id como fallback (modo demo).
-        student_id = (
-            session.get('student_id')
-            or data.get('student_id')
-            or 'demo_student'
-        )
-
-        is_valid, error_message, cleaned_message = validate_user_message(
-            message)
-        if not is_valid:
-            emit('error', {'message': error_message})
-            return
-
-        # Guardar SID activo para emisiones asíncronas
-        orchestrator_agent._active_sid = flask_request.sid
-
-        # Emitir que estamos procesando
-        emit('typing', {'agent_name': 'OrchestratorAgent', 'status': True})
-
-        # Ejecutar el orchestrator
-        result = orchestrator_agent.execute(
-            cleaned_message, student_id=student_id)
-
-        # Dejar de "escribir"
-        emit('typing', {'agent_name': 'OrchestratorAgent', 'status': False})
-
-        # Enviar respuesta con información adicional
-        emit('chat_response', {
-            'response': result['response'],
-            'agent_name': 'OrchestratorAgent',
-            'phase': result['phase'],
-            'logs': result['logs'],
-            'tokens': result.get('tokens', {}),
-            'tools_used': result.get('tools_used', []),
-            'mode': result.get('mode', 'azure_openai'),
-            'timestamp': datetime.now().isoformat()
-        })
-
-    except Exception as e:
-        logger.error(f"Error en WebSocket chat: {e}")
-        emit('error', {'message': str(e)})
-
-
-@app.route('/api/study-plan/<plan_id>', methods=['GET', 'DELETE'])
-def api_study_plan(plan_id):
-    """Devuelve los datos reales del plan de estudio desde la DB."""
-    import sqlite3 as _sqlite3
-    from datetime import datetime as _dt, timedelta as _td
-
-    if request.method == 'DELETE':
-        if not persistence_tool:
-            return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
-
-        try:
-            plan_data = persistence_tool.load_study_plan(plan_id)
-            if not plan_data:
-                return jsonify({'success': False, 'message': 'Plan no encontrado'}), 404
-
-            student_id = (plan_data.get('student_id') or '').strip()
-            if not student_id:
-                return jsonify({
-                    'success': False,
-                    'message': 'No se pudo resolver el estudiante propietario del plan',
-                }), 500
-
-            deleted = persistence_tool.delete_study_plans(
-                student_id=student_id,
-                plan_id=plan_id,
-            )
-            if deleted <= 0:
-                return jsonify({'success': False, 'message': 'Plan no encontrado'}), 404
-            return jsonify({
-                'success': True,
-                'student_id': student_id,
-                'deleted_plans': deleted,
-                'plan_id': plan_id,
-            })
-        except Exception as e:
-            logger.error(f"Error borrando plan {plan_id}: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
-
-    try:
-        plan_data = None
-
-        resolved_id = plan_id
-        if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
-            resolved_id = session.get('student_id')
-
-        # 1. Intentar cargar por plan_id directo
-        if persistence_tool:
-            plan_data = persistence_tool.load_study_plan(resolved_id)
-
-        # 2. Si no, buscar el plan más reciente por student_id
-        if not plan_data and persistence_tool:
-            try:
-                with _sqlite3.connect(persistence_tool.db_path) as conn:
-                    cur = conn.cursor()
-                    cur.execute(
-                        "SELECT plan_data FROM study_plans WHERE student_id = ? "
-                        "ORDER BY updated_at DESC LIMIT 1",
-                        (resolved_id,)
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        import json as _json
-                        plan_data = _json.loads(row[0])
-            except Exception:
-                pass
-
-        # 3. Fallback de demo: devolver el plan más reciente global
-        if not plan_data and persistence_tool and plan_id in {'demo', 'demo_student'}:
-            try:
-                with _sqlite3.connect(persistence_tool.db_path) as conn:
-                    cur = conn.cursor()
-                    cur.execute(
-                        "SELECT plan_data FROM study_plans ORDER BY updated_at DESC LIMIT 1"
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        import json as _json
-                        plan_data = _json.loads(row[0])
-            except Exception:
-                pass
-
-        if not plan_data:
-            return jsonify({'error': 'Plan no encontrado', 'plan_id': plan_id}), 404
-
-        # Fallback: si el plan existe pero no está estructurado, reconstruirlo.
-        if not plan_data.get('sessions') and plan_data.get('study_plan_response'):
-            rebuilt = orchestrator_agent._build_structured_study_plan(
-                plan_id=plan_data.get('plan_id', plan_id),
-                student_id=plan_data.get('student_id', resolved_id),
-                certification=plan_data.get('certification', ''),
-                study_plan_response=plan_data.get('study_plan_response', ''),
-            )
-            plan_data.update(rebuilt)
-            if persistence_tool:
-                try:
-                    persistence_tool.save_study_plan(
-                        plan_data.get('plan_id', plan_id),
-                        plan_data.get('student_id', resolved_id),
-                        plan_data,
-                    )
-                except Exception:
-                    pass
-
-        # 4. Obtener info del estudiante
-        student_name = resolved_id
-        if persistence_tool:
-            try:
-                sid = plan_data.get('student_id', resolved_id)
-                with _sqlite3.connect(persistence_tool.db_path) as conn:
-                    cur = conn.cursor()
-                    cur.execute("SELECT name, email FROM users WHERE student_id = ? OR id = ? LIMIT 1",
-                                (sid, sid))
-                    u = cur.fetchone()
-                    if u:
-                        student_name = u[0]
-                    else:
-                        cur.execute("SELECT name FROM users LIMIT 1")
-                        u2 = cur.fetchone()
-                        if u2:
-                            student_name = u2[0]
-            except Exception:
-                pass
-
-        # 5. Agrupar sesiones por semana
-        sessions = plan_data.get('sessions', [])
-        start_date_str = plan_data.get('start_date', '')
-        try:
-            start_dt = _dt.strptime(start_date_str, '%Y-%m-%d')
-        except Exception:
-            start_dt = _dt.now()
-
-        today = _dt.now().date()
-        weeks = {}
-        for s in sessions:
-            try:
-                sd = _dt.strptime(s['session_date'], '%Y-%m-%d')
-            except Exception:
-                continue
-            delta = (sd - start_dt).days
-            week_num = max(1, delta // 7 + 1)
-            if week_num not in weeks:
-                weeks[week_num] = {
-                    'week_number': week_num,
-                    'start_date': (start_dt + _td(weeks=week_num - 1)).strftime('%d/%m/%Y'),
-                    'end_date': (start_dt + _td(weeks=week_num) - _td(days=1)).strftime('%d/%m/%Y'),
-                    'sessions': [],
-                    'is_current': False,
-                    'is_done': False,
-                }
-            weeks[week_num]['sessions'].append({
-                'session_id': s.get('session_id', ''),
-                'date': sd.strftime('%d/%m/%Y'),
-                'topic': s.get('topic', ''),
-                'module': s.get('module_title', ''),
-                'duration_min': s.get('duration_minutes', 60),
-                'objectives': s.get('objectives', []),
-                'completed': s.get('completed', False),
-            })
-
-        # Marcar semana actual y pasadas
-        for wn, wdata in weeks.items():
-            try:
-                w_start = _dt.strptime(wdata['start_date'], '%d/%m/%Y').date()
-                w_end = _dt.strptime(wdata['end_date'], '%d/%m/%Y').date()
-                if w_start <= today <= w_end:
-                    wdata['is_current'] = True
-                elif w_end < today:
-                    wdata['is_done'] = True
-            except Exception:
-                pass
-
-        # 6. Calcular progreso
-        total_sessions = len(sessions)
-        completed_sessions = sum(
-            1 for s in sessions if s.get('completed', False))
-        overall_progress = round(
-            completed_sessions / total_sessions * 100) if total_sessions else 0
-
-        return jsonify({
-            'plan_id': plan_data.get('plan_id', plan_id),
-            'plan_name': plan_data.get(
-                'plan_name', plan_data.get('certification', 'Plan de estudio')
-            ),
-            'student_id': plan_data.get('student_id', resolved_id),
-            'student_name': student_name,
-            'certification': plan_data.get('certification', ''),
-            'start_date': start_date_str,
-            'target_exam_date': plan_data.get('target_exam_date', ''),
-            'total_weeks': max(weeks.keys()) if weeks else 0,
-            'weekly_hours': plan_data.get('weekly_hours', 0),
-            'total_sessions': total_sessions,
-            'completed_sessions': completed_sessions,
-            'overall_progress': overall_progress,
-            'certification_progress': overall_progress,
-            'weeks': [weeks[k] for k in sorted(weeks.keys())],
-            'milestones': plan_data.get('milestones', []),
-        })
-
-    except Exception as e:
-        logger.error(f"Error en api_study_plan: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/study-plans/<student_or_plan_id>', methods=['GET', 'DELETE'])
-def api_study_plans(student_or_plan_id):
-    """Lista los planes de estudio del estudiante (multi-certificación)."""
-    if not persistence_tool:
-        return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
-
-    try:
-        resolved_id = student_or_plan_id
-        if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
-            resolved_id = session.get('student_id')
-
-        as_plan = persistence_tool.load_study_plan(resolved_id)
-        student_id = as_plan.get(
-            'student_id', resolved_id) if as_plan else resolved_id
-        if request.method == 'DELETE':
-            deleted = persistence_tool.delete_study_plans(
-                student_id=student_id)
-            return jsonify({
-                'success': True,
-                'student_id': student_id,
-                'deleted_plans': deleted,
-            })
-
-        plans = persistence_tool.list_study_plans(student_id)
-
-        return jsonify({
-            'success': True,
-            'student_id': student_id,
-            'plans': plans,
-        })
-    except Exception as e:
-        logger.error(f"Error listando planes de estudio: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/study-plan/<plan_id>/rename', methods=['POST'])
-def rename_study_plan(plan_id):
-    """Renombra un plan de estudio existente."""
-    if not persistence_tool:
-        return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
-
-    try:
-        payload = request.get_json() or {}
-        plan_name = (payload.get('plan_name') or '').strip()
-        if not plan_name:
-            return jsonify({'success': False, 'message': 'Nombre de plan requerido'}), 400
-
-        ok = persistence_tool.update_study_plan_name(plan_id, plan_name)
-        if not ok:
-            return jsonify({'success': False, 'message': 'Plan no encontrado'}), 404
-
-        return jsonify({'success': True, 'plan_id': plan_id, 'plan_name': plan_name})
-    except Exception as e:
-        logger.error(f"Error renombrando plan {plan_id}: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/study-plan/<plan_id>/sessions/<session_id>/complete', methods=['POST'])
-def complete_study_session(plan_id, session_id):
-    """Marca una sesión del plan como completada o pendiente."""
-    if not persistence_tool:
-        return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
-
-    try:
-        payload = request.get_json() or {}
-        completed = bool(payload.get('completed', False))
-        ok = persistence_tool.set_study_session_completed(
-            plan_id=plan_id,
-            session_id=session_id,
-            completed=completed,
-        )
-        if not ok:
-            return jsonify({'success': False, 'message': 'Sesión o plan no encontrado'}), 404
-
-        return jsonify({
-            'success': True,
-            'plan_id': plan_id,
-            'session_id': session_id,
-            'completed': completed,
-        })
-    except Exception as e:
-        logger.error(f"Error actualizando sesión {session_id}: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/study-plan/<session_id>')
-def study_plan_page(session_id):
-    """Página del plan de estudio personalizado."""
-    resolved_id = session_id
-    if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
-        resolved_id = session.get('student_id')
-    return render_template('study_plan.html', session_id=resolved_id)
-
-
-@app.route('/study-plan')
-def study_plan_page_current():
-    """Página del plan de estudio del usuario autenticado actual."""
-    current_student_id = session.get('student_id', 'demo')
-    return redirect(url_for('study_plan_page', session_id=current_student_id))
-
-
-@app.route('/api/study-plan/<plan_id>/calendar')
-def download_study_plan_calendar(plan_id):
-    """Genera y descarga un calendario .ics del plan de estudio."""
-    if not persistence_tool or not calendar_tool:
-        return jsonify({'error': 'Calendario no disponible'}), 503
-
-    try:
-        resolved_id = plan_id
-        if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
-            resolved_id = session.get('student_id')
-
-        plan_data = persistence_tool.load_study_plan(resolved_id)
-        if not plan_data:
-            import sqlite3 as _sqlite3
-            with _sqlite3.connect(persistence_tool.db_path) as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT plan_data FROM study_plans WHERE student_id = ? "
-                    "ORDER BY updated_at DESC LIMIT 1",
-                    (resolved_id,)
-                )
-                row = cur.fetchone()
-                if row:
-                    plan_data = json.loads(row[0])
-
-        if not plan_data:
-            return jsonify({'error': 'Plan no encontrado'}), 404
-
-        student_email = ''
-        student_id = plan_data.get('student_id', resolved_id)
-        if persistence_tool:
-            email_record = persistence_tool.get_email(student_id)
-            if email_record:
-                student_email = email_record.get('email', '')
-
-        calendar_path = calendar_tool.generate_study_plan_calendar(
-            plan_data=plan_data,
-            student_email=student_email or 'student@example.com',
-        )
-        return send_file(
-            calendar_path,
-            as_attachment=True,
-            download_name='study_plan.ics',
-            mimetype='text/calendar',
-        )
-    except Exception as e:
-        logger.error(f"Error generando calendario del plan: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/study-plan/<plan_id>/activate-email-reminders', methods=['POST'])
-def activate_email_reminders(plan_id):
-    """Activa avisos por email para el plan actual y envía plan+calendario."""
-    if not persistence_tool:
-        return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
-
-    try:
-        payload = request.get_json(force=True, silent=True) or {}
-        email = (payload.get('email') or '').strip().lower()
-        send_test_email = bool(payload.get('send_test_email', False))
-        if not email:
-            return jsonify({'success': False, 'message': 'Email requerido'}), 400
-
-        resolved_id = plan_id
-        if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
-            resolved_id = session.get('student_id')
-
-        plan_data = None
-        try:
-            plan_data = persistence_tool.load_study_plan(resolved_id)
-        except Exception as db_err:
-            logger.error(f"Error cargando plan: {db_err}")
-        if not plan_data:
-            try:
-                import sqlite3 as _sqlite3
-                with _sqlite3.connect(persistence_tool.db_path) as conn:
-                    cur = conn.cursor()
-                    cur.execute(
-                        "SELECT plan_data FROM study_plans WHERE student_id = ? "
-                        "ORDER BY updated_at DESC LIMIT 1",
-                        (resolved_id,)
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        plan_data = json.loads(row[0])
-            except Exception as fallback_err:
-                logger.error(f"Error fallback plan: {fallback_err}")
-
-        if not plan_data:
-            return jsonify({'success': False, 'message': 'Plan no encontrado'}), 404
-
-        student_id = plan_data.get('student_id', resolved_id)
-        try:
-            persistence_tool.save_email(
-                student_id=student_id,
-                email=email,
-                name=session.get('name') or student_id,
-                notify_reminders=True,
-                notify_progress=True,
-                notify_assessments=True,
-            )
-        except Exception as save_email_err:
-            logger.error(f"Error guardando email: {save_email_err}")
-
-        email_sent = False
-        test_email_sent = False
-        warning_message = ''
-        if email_tool and calendar_tool:
-            try:
-                calendar_path = calendar_tool.generate_study_plan_calendar(
-                    plan_data=plan_data,
-                    student_email=email,
-                )
-                email_sent = asyncio.run(email_tool.send_study_plan_email(
-                    recipient_email=email,
-                    recipient_name=session.get('name') or student_id,
-                    plan_data=plan_data,
-                    calendar_attachment=calendar_path,
-                ))
-            except Exception as send_err:
-                logger.warning(f"No se pudo enviar email del plan: {send_err}")
-
-            if send_test_email:
-                try:
-                    test_email_sent = asyncio.run(email_tool.send_welcome_email(
-                        recipient_email=email,
-                        recipient_name=session.get('name') or student_id,
-                        certification=plan_data.get(
-                            'certification', 'Microsoft Certification'),
-                    ))
-                except Exception as test_err:
-                    logger.warning(
-                        f"No se pudo enviar email de prueba: {test_err}")
-                    test_email_sent = False
-                if send_test_email and not test_email_sent:
-                    warning_message = (
-                        'No se pudo enviar el email de prueba real. '
-                        'Revisa configuración SMTP/USE_REAL_EMAIL.'
-                    )
-        elif send_test_email:
-            return jsonify({
-                'success': False,
-                'message': 'Email tool no disponible para enviar prueba.',
-                'email_sent': email_sent,
-                'test_email_sent': False,
-            }), 503
-
-        return jsonify({
-            'success': True,
-            'email': email,
-            'message': 'Avisos por email activados correctamente',
-            'warning': warning_message,
-            'email_sent': email_sent,
-            'test_email_requested': send_test_email,
-            'test_email_sent': test_email_sent,
-        })
-    except Exception as e:
-        import traceback
-        logger.error(
-            f"Error activando avisos por email: {e}\n{traceback.format_exc()}")
-        return jsonify({'success': False, 'message': f'Error inesperado: {str(e)}'}), 500
-
-
-@app.route('/assessment')
-def assessment_page():
-    """Página de evaluación interactiva."""
-    student_id = session.get('student_id', 'demo_student')
-    chosen_cert = ''
-    if persistence_tool:
-        try:
-            profile = persistence_tool.load_student_profile(student_id)
-            if profile:
-                chosen_cert = profile.get('chosen_certification', '')
-        except Exception:
-            pass
-    return render_template('assessment.html', chosen_cert=chosen_cert)
-
-
-# Almacén temporal de preguntas generadas, keyed por session_token.
-# Guarda las preguntas CON la clave correcta server-side para evaluación real.
-_question_sessions: dict = {}
-
-
-def _generate_questions_with_llm(certification: str, student_level: str, count: int) -> list:
-    """
-    Genera preguntas de opción múltiple reales usando Azure OpenAI (Assessment Agent).
-
-    Devuelve una lista de dicts con: id, question, options (a/b/c/d), correct, explanation.
-    Si el LLM no está disponible lanza RuntimeError para que el caller lo maneje.
-    """
-    import os as _os
-    import json as _json
-    import re as _re
-
-    endpoint = _os.getenv('AZURE_OPENAI_ENDPOINT', '')
-    api_key = _os.getenv('AZURE_OPENAI_API_KEY', '')
-    deployment = _os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4o')
-    api_version = _os.getenv('AZURE_OPENAI_API_VERSION', '2024-02-15-preview')
-
-    if not (endpoint and api_key):
-        raise RuntimeError('Azure OpenAI no configurado')
-
-    from openai import AzureOpenAI as _AOAI
-    client = _AOAI(azure_endpoint=endpoint,
-                   api_key=api_key, api_version=api_version)
-
-    system_prompt = (
-        "Eres un experto en certificaciones Microsoft. "
-        "Genera exactamente las preguntas solicitadas en formato JSON. "
-        "Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni markdown. "
-        "Cada elemento del array debe tener:\n"
-        "  id: string único (ej: 'q1', 'q2'...)\n"
-        "  question: string con la pregunta\n"
-        "  options: objeto con claves 'a', 'b', 'c', 'd' y sus textos\n"
-        "  correct: letra de la opción correcta ('a', 'b', 'c' o 'd')\n"
-        "  explanation: string con la explicación de la respuesta correcta\n"
-        "Las preguntas deben cubrir distintos dominios del examen y distintos niveles de Bloom."
-    )
-    user_prompt = (
-        f"Genera {count} preguntas de opción múltiple para la certificación Microsoft {certification}, "
-        f"nivel del estudiante: {student_level}. Responde SOLO con el array JSON."
-    )
-
-    response = client.chat.completions.create(
-        model=deployment,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=4000,
-        temperature=0.4,
-    )
-
-    raw = response.choices[0].message.content.strip()
-    # Eliminar posibles bloques de código markdown
-    raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.MULTILINE)
-    raw = _re.sub(r'\s*```$', '', raw, flags=_re.MULTILINE)
-    questions = _json.loads(raw.strip())
-
-    if not isinstance(questions, list):
-        raise ValueError(f"El LLM no devolvió un array: {type(questions)}")
-
-    # Normalizar estructura mínima
-    normalized = []
-    for i, q in enumerate(questions[:count]):
-        normalized.append({
-            'id': q.get('id', f'q{i+1}'),
-            'question': q.get('question', ''),
-            'options': q.get('options', {}),
-            'correct': q.get('correct', 'a'),
-            'explanation': q.get('explanation', '')
-        })
-    return normalized
-
-
-@app.route('/api/assessment/generate', methods=['POST'])
-def generate_assessment():
-    """Generar preguntas de evaluación reales usando Azure OpenAI."""
-    try:
-        data = request.get_json()
-        certification = sanitize_text(str(data.get('certification', 'AZ-900')))
-        student_level = sanitize_text(
-            str(data.get('student_level', 'beginner')))
-        question_count = int(data.get('question_count', 10))
-
-        if question_count < 1 or question_count > 30:
-            return jsonify({'success': False, 'message': 'question_count fuera de rango (1-30)'}), 400
-
-        # Generar preguntas reales con LLM
-        questions = _generate_questions_with_llm(
-            certification, student_level, question_count)
-
-        # Almacenar preguntas server-side (con clave correcta) para la evaluación posterior
-        import uuid as _uuid
-        session_token = str(_uuid.uuid4())
-        _question_sessions[session_token] = {
-            'questions': questions,
-            'certification': certification,
-            'created_at': datetime.now().isoformat()
-        }
-
-        # Devolver al cliente SIN la clave correcta (anti-trampa)
-        client_questions = []
-        for q in questions:
-            cq = {k: v for k, v in q.items() if k != 'correct'}
-            client_questions.append(cq)
-
-        return jsonify({
-            'success': True,
-            'session_token': session_token,
-            'questions': client_questions,
-            'certification': certification,
-            'total_questions': len(client_questions)
-        })
-
-    except RuntimeError as e:
-        logger.warning(
-            f"Azure OpenAI no disponible para generate_assessment: {e}")
-        return jsonify({'success': False, 'message': 'Azure OpenAI no configurado. Configura AZURE_OPENAI_ENDPOINT y AZURE_OPENAI_API_KEY.'}), 503
-    except Exception as e:
-        logger.error(f"Error generando evaluación: {e}")
-        return jsonify({'success': False, 'message': f'Error generando evaluación: {str(e)}'}), 500
-
-
-@app.route('/api/assessment/submit', methods=['POST'])
-def submit_assessment():
-    """Evaluar las respuestas del estudiante contra las claves correctas almacenadas server-side."""
-    try:
-        data = request.get_json()
-        # {question_id: letra_elegida}
-        answers = data.get('answers', {})
-        session_token = data.get('session_token', '')
-        certification = sanitize_text(str(data.get('certification', 'AZ-900')))
-        student_id = session.get(
-            'student_id', data.get('student_id', 'demo_student'))
-
-        if not answers:
-            return jsonify({'success': False, 'message': 'No se recibieron respuestas'}), 400
-
-        # Recuperar preguntas del almacén server-side
-        stored = _question_sessions.get(session_token)
-        if not stored:
-            return jsonify({
-                'success': False,
-                'message': 'Sesión de evaluación no encontrada o expirada. Genera las preguntas de nuevo.'
-            }), 404
-
-        stored_questions = {q['id']: q for q in stored['questions']}
-
-        # Evaluar cada respuesta contra la clave correcta real
-        correct_count = 0
-        total_questions = len(answers)
-        feedback = []
-
-        for question_id, chosen_answer in answers.items():
-            question = stored_questions.get(question_id)
-            if question:
-                correct_letter = question.get('correct', '')
-                is_correct = str(chosen_answer).lower().strip() == str(
-                    correct_letter).lower().strip()
-                if is_correct:
-                    correct_count += 1
-                feedback.append({
-                    'question_id': question_id,
-                    'chosen': chosen_answer,
-                    'correct_answer': correct_letter,
-                    'is_correct': is_correct,
-                    'explanation': question.get('explanation', ''),
-                    'question_text': question.get('question', '')
-                })
-            else:
-                # Pregunta no encontrada: marcar como incorrecta
-                feedback.append({
-                    'question_id': question_id,
-                    'chosen': chosen_answer,
-                    'correct_answer': '?',
-                    'is_correct': False,
-                    'explanation': 'Pregunta no encontrada en la sesión.'
-                })
-
-        score_percentage = (correct_count / total_questions *
-                            100) if total_questions > 0 else 0
-        passed = score_percentage >= 70
-
-        # Análisis real del Critic Agent
-        wrong_topics = [f['question_text'][:60]
-                        for f in feedback if not f['is_correct']]
-        critic_prompt = (
-            f"Analiza los resultados de evaluación del estudiante:\n"
-            f"- Certificación: {certification}\n"
-            f"- Resultado: {correct_count}/{total_questions} correctas ({score_percentage:.1f}%)\n"
-            f"- {'APROBADO ✅' if passed else 'NECESITA REFUERZO ⚠️'}\n"
-            f"- Preguntas falladas (extracto): {wrong_topics[:5]}\n\n"
-            f"Proporciona feedback constructivo específico con áreas a reforzar y recursos recomendados."
-        )
-        try:
-            critic_result = orchestrator_agent.agents['critic'].execute(
-                critic_prompt, student_id)
-            critic_analysis = critic_result['response'] if isinstance(
-                critic_result, dict) else str(critic_result)
-        except Exception as ce:
-            logger.warning(f"Critic Agent no disponible: {ce}")
-            critic_analysis = f"Resultado: {correct_count}/{total_questions} ({score_percentage:.1f}%). {'¡Aprobado!' if passed else 'Necesitas refuerzo en los temas fallados.'}"
-
-        # Persistir evaluación
-        if persistence_tool:
-            import uuid as _uuid2
-            assessment_id = f"assessment_{student_id}_{_uuid2.uuid4().hex[:8]}"
-            persistence_tool.save_assessment(
-                assessment_id=assessment_id,
-                student_id=student_id,
-                assessment_data={
-                    'certification': certification,
-                    'questions_count': total_questions,
-                    'feedback': feedback,
-                    'critic_analysis': critic_analysis,
-                },
-                score=score_percentage,
-                passed=passed
-            )
-
-        # Limpiar sesión para evitar acumulación en memoria
-        _question_sessions.pop(session_token, None)
-
-        return jsonify({
-            'success': True,
-            'score': correct_count,
-            'total': total_questions,
-            'percentage': round(score_percentage, 1),
-            'passed': passed,
-            'feedback': feedback,
-            'critic_analysis': critic_analysis
-        })
-
-    except Exception as e:
-        logger.error(f"Error evaluando respuestas: {e}")
-        return jsonify({'success': False, 'message': f'Error evaluando respuestas: {str(e)}'}), 500
-
-
-# ===== DASHBOARD DE PROGRESO =====
-
-@app.route('/progress')
-def progress_dashboard():
-    """Dashboard de progreso con gráficos y análisis."""
-    return render_template('progress.html')
-
-
-def _get_active_days(student_id: str) -> int:
-    """Calcula los días activos de estudio/conversación del estudiante."""
-    if not persistence_tool:
-        return 0
-
-    import sqlite3 as _sq
-
-    try:
-        with _sq.connect(persistence_tool.db_path) as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT COUNT(DISTINCT DATE(created_at)) "
-                "FROM conversation_history WHERE student_id = ?",
-                (student_id,)
-            )
-            row = cur.fetchone()
-            return int(row[0] or 0)
-    except Exception:
-        return 0
-
-
-@app.route('/api/progress/overview')
-def get_progress_overview():
-    """Obtener datos generales de progreso del estudiante desde la base de datos real."""
-    try:
-        student_id = session.get(
-            'student_id', request.args.get('student_id', 'anonymous'))
-
-        # --- Datos reales desde SQLite ---
-        import sqlite3 as _sq
-
-        total_study_hours = 0.0
-        overall_progress = 0
-        certifications_completed = 0
-        average_score = 0.0
-        # Scores de las últimas evaluaciones (hasta 7)
-        study_trend = []
-        assessments_raw = []
-
-        if persistence_tool:
-            db = persistence_tool.db_path
-            try:
-                with _sq.connect(db) as conn:
-                    cur = conn.cursor()
-
-                    # Tiempo total de estudio en horas
-                    cur.execute(
-                        "SELECT COALESCE(SUM(time_spent_minutes),0) FROM study_progress WHERE student_id=?", (student_id,))
-                    total_study_hours = round((cur.fetchone()[0] or 0) / 60, 1)
-
-                    # Módulos completados / totales → porcentaje de progreso
-                    cur.execute(
-                        "SELECT COUNT(*), SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END) FROM study_progress WHERE student_id=?", (student_id,))
-                    row = cur.fetchone()
-                    total_mod, done_mod = (row[0] or 0), (row[1] or 0)
-                    overall_progress = round(
-                        done_mod / total_mod * 100) if total_mod > 0 else 0
-
-                    # Evaluaciones aprobadas
-                    cur.execute(
-                        "SELECT COUNT(*) FROM assessments WHERE student_id=? AND passed=1", (student_id,))
-                    certifications_completed = cur.fetchone()[0] or 0
-
-                    # Puntuación media
-                    cur.execute(
-                        "SELECT AVG(score) FROM assessments WHERE student_id=? AND score IS NOT NULL", (student_id,))
-                    avg = cur.fetchone()[0]
-                    average_score = round(avg, 1) if avg else 0.0
-
-                    # Tendencia: las últimas 7 puntuaciones de evaluaciones
-                    cur.execute(
-                        "SELECT score FROM assessments WHERE student_id=? AND score IS NOT NULL ORDER BY created_at DESC LIMIT 7", (student_id,))
-                    scores_desc = [r[0] for r in cur.fetchall()]
-                    study_trend = list(reversed(scores_desc)
-                                       )  # orden cronológico
-
-                    # Módulos con score para weak/strong topics
-                    cur.execute(
-                        "SELECT module_id, score FROM study_progress WHERE student_id=? AND score IS NOT NULL ORDER BY score", (student_id,))
-                    assessments_raw = cur.fetchall()
-            except Exception as db_err:
-                logger.warning(f"Error leyendo progreso de DB: {db_err}")
-
-        active_days = _get_active_days(student_id)
-
-        # Weak / strong topics desde módulos reales
-        weakest_topics = [m[0]
-                          for m in assessments_raw[:3]] if assessments_raw else []
-        strongest_topics = [m[0] for m in assessments_raw[-3:]
-                            [::-1]] if len(assessments_raw) >= 3 else []
-
-        # Determinar próximo hito desde el plan de estudio activo
-        next_milestone = 'Primera evaluación'
-        if persistence_tool:
-            profile = persistence_tool.load_student_profile(student_id)
-            if profile and profile.get('chosen_certification'):
-                next_milestone = f"Examen {profile['chosen_certification']}"
-
-        data = {
-            'overall_progress': overall_progress,
-            'certifications_completed': certifications_completed,
-            'total_study_hours': total_study_hours,
-            'active_days': active_days,
-            'average_score': average_score,
-            'weakest_topics': weakest_topics or ['Sin datos aún'],
-            'strongest_topics': strongest_topics or ['Sin datos aún'],
-            'next_milestone': next_milestone,
-            'study_trend': study_trend or []
-        }
-
-        # Análisis real del Critic Agent con datos reales
-        try:
-            critic_prompt = (
-                f"Analiza el progreso real del estudiante:\n"
-                f"- Progreso global: {overall_progress}%\n"
-                f"- Horas de estudio: {total_study_hours}h\n"
-                f"- Puntuación media: {average_score}%\n"
-                f"- Evaluaciones aprobadas: {certifications_completed}\n"
-                f"- Días activos: {active_days}\n"
-                f"- Módulos débiles: {weakest_topics}\n"
-                f"- Módulos fuertes: {strongest_topics}\n\n"
-                f"Proporciona recomendaciones específicas y accionables para mejorar."
-            )
-            critic_result = orchestrator_agent.agents['critic'].execute(
-                critic_prompt, student_id)
-            data['critic_analysis'] = critic_result['response'] if isinstance(
-                critic_result, dict) else str(critic_result)
-        except Exception as ae:
-            logger.warning(f"Critic Agent no disponible: {ae}")
-            data['critic_analysis'] = f"Progreso: {overall_progress}%. {'¡Buen ritmo!' if overall_progress > 50 else 'Sigue practicando para mejorar.'}"
-
-        return jsonify({'success': True, 'data': data})
-
-    except Exception as e:
-        logger.error(f"Error obteniendo datos de progreso: {e}")
-        return jsonify({'success': False, 'message': f'Error obteniendo datos: {str(e)}'}), 500
-
-
-@app.route('/api/progress/detailed')
-def get_detailed_progress():
-    """Obtener datos detallados de progreso por certificación desde la base de datos real."""
-    try:
-        certification = request.args.get('certification', 'AZ-900')
-        student_id = session.get(
-            'student_id', request.args.get('student_id', 'anonymous'))
-
-        import sqlite3 as _sq
-
-        modules_progress = []
-        assessment_history = []
-        study_sessions = []
-
-        if persistence_tool:
-            db = persistence_tool.db_path
-            try:
-                with _sq.connect(db) as conn:
-                    cur = conn.cursor()
-
-                    # Progreso real por módulo
-                    cur.execute("""
-                        SELECT module_id,
-                               CASE WHEN completed=1 THEN 100 ELSE
-                                   CASE WHEN time_spent_minutes > 0 THEN MIN(time_spent_minutes * 2, 99) ELSE 0 END
-                               END as progress,
-                               COALESCE(score, 0) as score
-                        FROM study_progress
-                        WHERE student_id=?
-                        ORDER BY updated_at DESC
-                        LIMIT 20
-                    """, (student_id,))
-                    for row in cur.fetchall():
-                        modules_progress.append({
-                            'name': row[0],
-                            'progress': int(row[1]),
-                            'score': round(float(row[2]), 1)
-                        })
-
-                    # Historial real de evaluaciones
-                    cur.execute("""
-                        SELECT created_at, score, assessment_data
-                        FROM assessments
-                        WHERE student_id=?
-                        ORDER BY created_at DESC
-                        LIMIT 20
-                    """, (student_id,))
-                    for row in cur.fetchall():
-                        ts = row[0][:10] if row[0] else ''
-                        score_val = round(
-                            float(row[1]), 1) if row[1] is not None else 0
-                        try:
-                            adata = json.loads(row[2]) if row[2] else {}
-                            cert_name = adata.get(
-                                'certification', certification)
-                        except Exception:
-                            cert_name = certification
-                        assessment_history.append({
-                            'date': ts,
-                            'score': score_val,
-                            'certification': cert_name
-                        })
-
-                    # Sesiones de estudio reales
-                    cur.execute("""
-                        SELECT DATE(updated_at),
-                               COALESCE(time_spent_minutes, 0),
-                               module_id
-                        FROM study_progress
-                        WHERE student_id=?
-                        ORDER BY updated_at DESC
-                        LIMIT 20
-                    """, (student_id,))
-                    for row in cur.fetchall():
-                        study_sessions.append({
-                            'date': row[0] or '',
-                            'duration': round(float(row[1]) / 60, 2),
-                            'topics': [row[2]] if row[2] else []
-                        })
-
-            except Exception as db_err:
-                logger.warning(
-                    f"Error leyendo progreso detallado de DB: {db_err}")
-
-        detailed_data = {
-            'certification': certification,
-            'modules_progress': modules_progress,
-            'assessment_history': assessment_history,
-            'study_sessions': study_sessions
-        }
-
-        return jsonify({'success': True, 'data': detailed_data})
-
-    except Exception as e:
-        logger.error(f"Error obteniendo datos detallados: {e}")
-        return jsonify({'success': False, 'message': f'Error obteniendo datos detallados: {str(e)}'}), 500
-
-
-@app.route('/api/progress/insights')
-def get_progress_insights():
-    """Obtener insights y recomendaciones personalizadas basados en datos reales del estudiante."""
-    try:
-        student_id = session.get(
-            'student_id', request.args.get('student_id', 'anonymous'))
-
-        import sqlite3 as _sq
-
-        # Recopilar datos reales del estudiante de SQLite
-        weak_modules = []
-        strong_modules = []
-        scores_list = []
-        avg_session_minutes = 0.0
-        chosen_cert = ''
-
-        if persistence_tool:
-            db = persistence_tool.db_path
-            try:
-                with _sq.connect(db) as conn:
-                    cur = conn.cursor()
-                    # Módulos con score, ordenados de menor a mayor
-                    cur.execute("""
-                        SELECT module_id, score FROM study_progress
-                        WHERE student_id=? AND score IS NOT NULL
-                        ORDER BY score ASC
-                    """, (student_id,))
-                    all_mod = cur.fetchall()
-                    weak_modules = [r[0] for r in all_mod[:3]]
-                    strong_modules = [r[0] for r in all_mod[-3:][::-1]]
-
-                    # Historial de scores de evaluaciones
-                    cur.execute(
-                        "SELECT score FROM assessments WHERE student_id=? AND score IS NOT NULL ORDER BY created_at DESC LIMIT 10", (student_id,))
-                    scores_list = [round(r[0], 1) for r in cur.fetchall()]
-
-                    # Duración media de sesiones de estudio
-                    cur.execute(
-                        "SELECT AVG(time_spent_minutes) FROM study_progress WHERE student_id=? AND time_spent_minutes > 0", (student_id,))
-                    avg_row = cur.fetchone()
-                    avg_session_minutes = round(float(avg_row[0] or 0), 1)
-
-            except Exception as db_err:
-                logger.warning(f"Error leyendo datos para insights: {db_err}")
-
-            profile = persistence_tool.load_student_profile(student_id)
-            if profile:
-                chosen_cert = profile.get('chosen_certification', '')
-
-        active_days = _get_active_days(student_id)
-        avg_score = round(sum(scores_list) / len(scores_list),
-                          1) if scores_list else 0
-
-        # Construir contexto real para los agentes
-        context_assessment = (
-            f"Analiza los patrones de aprendizaje reales del estudiante:\n"
-            f"- Certificación objetivo: {chosen_cert or 'por definir'}\n"
-            f"- Módulos débiles (menor score): {weak_modules or 'Sin datos aún'}\n"
-            f"- Módulos fuertes (mayor score): {strong_modules or 'Sin datos aún'}\n"
-            f"- Histórico de evaluaciones (scores): {scores_list or 'Sin evaluaciones aún'}\n"
-            f"- Puntuación media: {avg_score}%\n"
-            f"- Duración media de sesiones: {avg_session_minutes} min\n\n"
-            f"Proporciona insights específicos y accionables. Incluye una predicción realista del tiempo hasta el examen."
-        )
-        context_engagement = (
-            f"El estudiante acumula {active_days} días activos de estudio.\n"
-            f"Puntuación media de evaluaciones: {avg_score}%.\n"
-            f"Módulos que necesitan refuerzo: {weak_modules or 'Sin datos aún'}.\n"
-            f"Proporciona consejos de motivación personalizados y un plan de acción de 3 pasos."
-        )
-
-        # Assessment Agent → patrones de aprendizaje
-        try:
-            assessment_result = orchestrator_agent.agents['assessment'].execute(
-                context_assessment, student_id)
-            learning_patterns = assessment_result['response'] if isinstance(
-                assessment_result, dict) else str(assessment_result)
-        except Exception as ae:
-            learning_patterns = f"Puntuación media: {avg_score}%. Módulos a reforzar: {', '.join(weak_modules) or 'sin datos'}."
-
-        # Engagement Agent → motivación
-        try:
-            engagement_result = orchestrator_agent.agents['engagement'].execute(
-                context_engagement, student_id)
-            motivation_tips = engagement_result['response'] if isinstance(
-                engagement_result, dict) else str(engagement_result)
-        except Exception as ee:
-            motivation_tips = (
-                f"Días activos: {active_days}. Mantén el ritmo de estudio."
-            )
-
-        # Acciones recomendadas basadas en datos reales
-        recommended_actions = []
-        if weak_modules:
-            recommended_actions.append(
-                f"Refuerza los módulos con menor puntuación: {', '.join(weak_modules[:2])}")
-        if avg_score < 70:
-            recommended_actions.append(
-                "Tu media está por debajo del umbral de aprobado (70%). Practica más simulacros.")
-        elif avg_score >= 70:
-            recommended_actions.append(
-                f"Estás por encima del umbral de aprobado ({avg_score}%). ¡Mantén el ritmo!")
-        if active_days >= 7:
-            recommended_actions.append(
-                f"Excelente constancia: {active_days} días activos."
-            )
-        if avg_session_minutes < 30 and avg_session_minutes > 0:
-            recommended_actions.append(
-                "Tus sesiones son cortas (< 30 min). Considera bloques de 45-60 min para mayor retención.")
-        if not recommended_actions:
-            recommended_actions.append(
-                f"Completa tu perfil y genera tu primer plan de estudio para {chosen_cert or 'tu certificación objetivo'}.")
-
-        # Predicción basada en datos reales
-        if avg_score >= 80 and active_days >= 7:
-            predicted_outcome = (
-                f"Con {avg_score}% de media y {active_days} días activos, "
-                "estás listo/a. Programa tu examen en 2-3 semanas."
-            )
-        elif avg_score >= 70:
-            predicted_outcome = f"Con {avg_score}% de media, necesitas consolidar un poco más. Estimado: 3-4 semanas más de práctica."
-        elif avg_score > 0:
-            predicted_outcome = f"Con {avg_score}% de media, refuerza los módulos débiles. Estimado: 6-8 semanas para estar listo/a."
-        else:
-            predicted_outcome = f"Genera tu primer plan de estudio para {chosen_cert or 'tu certificación'} y empieza a trackear tu progreso."
-
-        insights = {
-            'learning_patterns': learning_patterns,
-            'motivation_tips': motivation_tips,
-            'recommended_actions': recommended_actions,
-            'predicted_outcome': predicted_outcome
-        }
-
-        return jsonify({'success': True, 'data': insights})
-
-    except Exception as e:
-        logger.error(f"Error obteniendo insights: {e}")
-        return jsonify({'success': False, 'message': f'Error obteniendo insights: {str(e)}'}), 500
-
-
-if __name__ == '__main__':
-    # Iniciar servidor
-    logger.info("🚀 Iniciando servidor Flask en puerto 5033...")
-    socketio.run(app, host='0.0.0.0', port=5033, debug=True)
