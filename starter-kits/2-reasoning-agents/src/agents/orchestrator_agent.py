@@ -1078,9 +1078,12 @@ class OrchestratorAgent:
             return sessions
 
         # --- Obtener catálogo de módulos vía API real ---
+        # Se pide en español (es-es) porque los tópicos del plan también están
+        # en español. Así los tokens coinciden mejor (p.ej. "introducción" ↔
+        # "Introducción a Dynamics 365 Business Central").
         catalog_url = (
             "https://learn.microsoft.com/api/catalog/"
-            "?type=modules&locale=en-us"
+            "?type=modules&locale=es-es"
         )
         modules: list = []
         try:
@@ -1110,27 +1113,109 @@ class OrchestratorAgent:
             ]
         search_pool = cert_modules if len(cert_modules) >= 3 else modules
 
+        # Stop-words de contexto: palabras que aparecen en casi todos los
+        # módulos de la certificación y no ayudan a discriminar.
+        _AEP_CTX_STOPWORDS: set[str] = {
+            'dynamics', 'business', 'central', 'microsoft', 'azure',
+            '365', 'learn', 'your', 'this', 'that', 'with', 'from',
+            'into', 'and', 'the', 'are', 'can', 'will', 'use', 'using',
+            'how', 'work', 'course', 'training', 'power', 'platform',
+            # Español
+            'dynamics', 'para', 'con', 'del', 'los', 'las', 'una',
+            'este', 'esta', 'como', 'sus', 'cada', 'semana', 'modulo',
+            'recursos', 'practicas', 'horas', 'dias', 'minutos', 'dias',
+        }
+        # Stop-words adicionales por certificación (palabras que están en el
+        # 100% de los módulos de esa cert y no discriminan nada)
+        _CERT_EXTRA_STOPWORDS: dict[str, set[str]] = {
+            'MB-800': {'business', 'central', 'dynamics'},
+            'MB-300': {'business', 'central', 'dynamics'},
+            'MB-335': {'supply', 'chain', 'dynamics'},
+            'MB-700': {'finance', 'dynamics'},
+            'AZ-900': {'azure', 'cloud'},
+            'AZ-104': {'azure'},
+            'AZ-204': {'azure'},
+            'AZ-305': {'azure'},
+            'AI-102': {'azure'},
+            'PL-100': {'power', 'platform'},
+            'PL-400': {'power', 'platform'},
+            'PL-900': {'power', 'platform'},
+            'MS-700': {'teams', 'microsoft'},
+        }
+        ctx_stop = _AEP_CTX_STOPWORDS | _CERT_EXTRA_STOPWORDS.get(
+            cert_upper, set())
+
+        import unicodedata as _ud
+
+        def _norm(text: str) -> str:
+            """Normaliza texto: minúsculas, quita tildes/diéresis."""
+            nfkd = _ud.normalize('NFKD', text.lower())
+            return ''.join(c for c in nfkd if not _ud.combining(c))
+
         def _score(module: dict, tokens: list[str]) -> int:
-            """Puntúa un módulo basándose en coincidencias de tokens."""
-            text = (
-                module.get("title", "") + " " + module.get("summary", "")
-            ).lower()
-            return sum(1 for t in tokens if t in text)
+            """
+            Puntúa un módulo usando coincidencias ponderadas y normalizadas.
+            Título = 2 pts/token, resumen = 1 pt/token.
+            También prueba sin la 's' final (plural→singular) y los primeros
+            6 caracteres como raíz verbal española (migracion↔migrar, etc.).
+            """
+            title = _norm(module.get("title", ""))
+            summary = _norm(module.get("summary", ""))
+            score = 0
+            for t in tokens:
+                tn = _norm(t)
+                # ── forma exacta ──
+                in_title = tn in title
+                in_summary = tn in summary
+                # ── singular (quitar 's' final) ──
+                tn_sing = tn[:-1] if tn.endswith('s') and len(tn) > 4 else tn
+                if not in_title:
+                    in_title = tn_sing in title
+                if not in_summary:
+                    in_summary = tn_sing in summary
+                # ── raíz verbal española (primeros 5 chars para palabras ≥7) ──
+                #    cubre: migra(cion)↔migrar, intro(duccion)↔introducir,
+                #           confi(guracion)↔configurar, factu(racion)↔factura
+                stem_match = False
+                if not in_title and not in_summary and len(tn) >= 7:
+                    stem = tn[:5]
+                    stem_match = stem in title or stem in summary
+                if in_title:
+                    score += 2
+                elif in_summary:
+                    score += 1
+                elif stem_match:
+                    score += 1   # coincidencia por raíz verbal
+            return score
 
         def _normalize_url(url: str) -> str:
             if not url:
                 return ""
             if url.startswith("/"):
-                return f"https://learn.microsoft.com{url}"
-            return url
+                full = f"https://learn.microsoft.com{url}"
+            else:
+                full = url
+            # Eliminar el parámetro de seguimiento que añade la API
+            return full.split("?")[0].rstrip("/")
+
+        # Con el scoring ponderado (título=2, resumen=1, stem=1), el umbral mínimo
+        # de 3 garantiza al menos un token específico en el título o combinación
+        # de varios en el resumen. Para el pool general se exige 4.
+        score_threshold = 3 if len(cert_modules) >= 3 else 4
 
         for session in sessions:
             topic: str = session.get("topic", "")
             if not topic:
                 continue
 
-            # Tokens de búsqueda: palabras de más de 3 caracteres
-            tokens = [t for t in topic.lower().split() if len(t) > 3]
+            # Tokens discriminantes: normalizar (quitar tildes) y excluir
+            # stop-words del contexto de la certificación.
+            tokens = [
+                _norm(t) for t in topic.split()
+                if len(t) > 3 and _norm(t) not in ctx_stop
+            ]
+            if not tokens:
+                tokens = [_norm(t) for t in topic.split() if len(t) > 3]
 
             best_module = None
             best_score = 0
@@ -1140,9 +1225,9 @@ class OrchestratorAgent:
                     best_score = score
                     best_module = module
 
-            # Exigir al menos 3 tokens coincidentes para evitar falsos positivos;
-            # si no se alcanza, la URL de búsqueda oficial es mejor que un módulo incorrecto
-            if best_module and best_score >= 3:
+            # Usar URL del módulo solo si hay suficiente coincidencia;
+            # si no, la URL de búsqueda oficial es más segura que un módulo incorrecto.
+            if best_module and best_score >= score_threshold:
                 raw_url = _normalize_url(best_module.get("url", ""))
                 session["learn_url"] = raw_url or _search_url(topic)
             else:

@@ -3262,10 +3262,12 @@ def api_study_plan(plan_id):
                 except Exception:
                     pass
 
-        # Enriquecimiento lazy de learn_url: si el plan tiene sesiones pero ninguna
-        # tiene learn_url, enriquecer ahora y volver a guardar (ocurre una sola vez).
         sessions_raw = plan_data.get('sessions', [])
-        if sessions_raw and not any(s.get('learn_url') for s in sessions_raw):
+        has_valid_module_url = any(
+            '/training/modules/' in (s.get('learn_url') or '')
+            for s in sessions_raw
+        )
+        if sessions_raw and not has_valid_module_url:
             try:
                 from src.agents.orchestrator_agent import OrchestratorAgent as _OA
                 plan_data['sessions'] = _OA._enrich_sessions_with_learn_urls(

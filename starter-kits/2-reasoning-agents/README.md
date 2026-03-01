@@ -4,6 +4,10 @@
 
 Welcome to the Reasoning Agents track! In this challenge, you'll build a multi-agent system with **Microsoft Foundry** that leverages advanced reasoning capabilities to solve complex problems. This starter kit provides you with the foundational knowledge, tools, and resources to get started on your journey.
 
+# DEMO:
+- **README: starter-kits\2-reasoning-agents\demo
+- **Video demo: [demo/demo-agents.mkv](demo/demo-agents.mkv)** (if not yet uploaded, check [demo/README.md](demo/README.md))
+
 ---
 
 ## Prerequisites
