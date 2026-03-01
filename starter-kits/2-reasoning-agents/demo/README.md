@@ -61,7 +61,7 @@ AEP CertMaster coordina agentes especializados mediante un Orchestrator que apli
 
 ## 4) Demo
 
-- Video de demostración: [demo/demo-agents.mkv](demo/demo-agents.mkv)
+- Video de demostración: [demo-agents.mkv](demo-agents.mkv)
 
 ---
 
