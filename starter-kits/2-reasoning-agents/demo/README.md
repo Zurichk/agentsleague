@@ -76,7 +76,21 @@ pip install -r requirements.txt
 python run_flask_dashboard.py
 ```
 
-La app inicia en el puerto configurado del dashboard.
+La app se levanta en el puerto configurado del dashboard.
+
+### Otras opciones
+- **Docker**: hay un `Dockerfile` en la raíz. Puedes construir y ejecutar el contenedor con:
+
+  ```bash
+docker build -t aep-certmaster .
+docker run -p 5000:5000 --env-file .env aep-certmaster
+```
+
+- **Deployment público**: si sólo quieres verla en acción, está desplegada en Coolify aquí:
+
+  http://78.47.111.58:5033/
+
+  (el servicio puede tardar unos segundos en arrancar si está inactivo)
 
 ---
 
