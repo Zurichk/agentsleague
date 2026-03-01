@@ -24,6 +24,7 @@ from src.models.schemas import (
     AEPCertificationPath
 )
 from src.tools.azure_openai_tool import AzureOpenAITool
+from src.tools.certifications import certifications_tool
 from src.tools.persistence import PersistenceTool
 
 
@@ -136,6 +137,7 @@ class AEPCertAdvisorAgent(AEPAgent):
 
         # Configuración específica del agente
         self.certification_database = self._load_certification_database()
+        self._catalog_loaded_from_api = False
         self.career_impact_weights = config.get("career_impact_weights", {
             "salary_increase": 0.3,
             "job_opportunities": 0.3,
@@ -276,6 +278,9 @@ class AEPCertAdvisorAgent(AEPAgent):
                 message=f"Perfil de estudiante no encontrado: {student_id}"
             )
 
+        # Sincronizar catálogo oficial antes de recomendar
+        await self._refresh_certification_database_from_api()
+
         # Generar recomendaciones personalizadas
         recommendations = await self._generate_personalized_recommendations(
             student_profile,
@@ -319,6 +324,8 @@ class AEPCertAdvisorAgent(AEPAgent):
                 success=False,
                 message="Se requieren student_id y certification_id"
             )
+
+        await self._refresh_certification_database_from_api()
 
         # Obtener perfil y certificación
         student_profile = await self.persistence_tool.get_student_profile(student_id)
@@ -445,6 +452,8 @@ class AEPCertAdvisorAgent(AEPAgent):
                 success=False,
                 message="Se requiere certification_id para análisis"
             )
+
+        await self._refresh_certification_database_from_api()
 
         certification = self._get_certification_by_id(certification_id)
         if not certification:
@@ -908,6 +917,8 @@ class AEPCertAdvisorAgent(AEPAgent):
         Returns:
             Ruta de certificación diseñada.
         """
+        await self._refresh_certification_database_from_api()
+
         # Obtener datos de certificaciones objetivo
         cert_data = []
         for cert_id in target_certifications:
@@ -1313,6 +1324,72 @@ class AEPCertAdvisorAgent(AEPAgent):
             suggestions.append("Azure Administrator Associate")
 
         return suggestions[:2]  # Máximo 2 sugerencias
+
+    async def _refresh_certification_database_from_api(self) -> None:
+        """
+        Refresca catálogo local con datos oficiales de Microsoft Learn.
+
+        Conserva certificaciones fallback y sobreescribe con datos del API
+        cuando estén disponibles.
+        """
+        if self._catalog_loaded_from_api:
+            return
+
+        try:
+            certs = await certifications_tool.fetch_all_certifications()
+        except Exception as exc:
+            self.logger.warning(
+                "No se pudo consultar catálogo oficial de certificaciones: %s",
+                exc,
+            )
+            return
+
+        if not certs:
+            self.logger.warning(
+                "Catálogo oficial de certificaciones vacío. "
+                "Se usa catálogo local fallback."
+            )
+            return
+
+        merged_catalog = dict(self.certification_database)
+        for cert in certs:
+            cert_key = (cert.get("cert_id") or "").strip().lower()
+            if not cert_key:
+                continue
+
+            provider = "azure"
+            cert_products = [p.lower() for p in cert.get("products", [])]
+            if cert_products and all("azure" not in p for p in cert_products):
+                provider = "other"
+
+            level_map = {
+                "beginner": "foundational",
+                "intermediate": "associate",
+                "advanced": "professional",
+            }
+            level = level_map.get(
+                cert.get("level", "intermediate"), "associate")
+
+            merged_catalog[cert_key] = {
+                "title": cert.get("name", cert_key.upper()),
+                "provider": provider,
+                "level": level,
+                "prerequisites": [],
+                "estimated_prep_weeks": 8,
+                "cost_usd": 99,
+                "validity_years": 3,
+                "knowledge_areas": [
+                    skill.lower().replace(" ", "_")
+                    for skill in cert.get("skills_measured", [])[:8]
+                ],
+            }
+
+        self.certification_database = merged_catalog
+        self._catalog_loaded_from_api = True
+        self.logger.info(
+            "Catálogo oficial aplicado en CertAdvisor: %s certificaciones",
+            len(certs),
+        )
 
     async def _calculate_detailed_readiness_scores(
         self,

@@ -4,6 +4,12 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta
+from urllib.parse import quote_plus
+
+try:
+    import httpx as _httpx
+except ImportError:  # pragma: no cover
+    _httpx = None  # type: ignore[assignment]
 
 try:
     from src.agents.metrics import get_metrics_collector
@@ -901,6 +907,7 @@ class OrchestratorAgent:
                     "Validar comprensión con autoevaluación breve",
                 ],
                 'completed': False,
+                'learn_url': '',
             })
 
         for raw_line in text.splitlines():
@@ -1008,6 +1015,140 @@ class OrchestratorAgent:
             'study_plan_response': study_plan_response,
             'created_at': datetime.now().isoformat(),
         }
+
+    @staticmethod
+    def _enrich_sessions_with_learn_urls(
+        sessions: list,
+        certification: str,
+    ) -> list:
+        """
+        Enriquece las sesiones del plan con URLs reales de módulos de Microsoft Learn.
+
+        Consulta la API del catálogo de Learn de forma síncrona.
+        Para cada sesión busca el módulo con mayor coincidencia en el título.
+        Si no se encuentra coincidencia de alta confianza (>= 3 tokens), devuelve
+        una URL de búsqueda oficial con filtro de producto cuando sea posible.
+
+        Args:
+            sessions: Lista de sesiones del plan (dicts).
+            certification: Código de certificación objetivo (p.ej. "MB-800").
+
+        Returns:
+            Lista de sesiones con el campo ``learn_url`` relleno.
+        """
+        # Mapa de certificaciones a identificadores de producto en Microsoft Learn
+        AEP_CERT_PRODUCT_MAP: dict[str, str] = {
+            "MB-800": "dynamics-business-central",
+            "MB-300": "dynamics-business-central",
+            "MB-335": "dynamics-supply-chain-management",
+            "MB-700": "dynamics-finance",
+            "AZ-900": "azure",
+            "AZ-104": "azure",
+            "AZ-204": "azure",
+            "AZ-305": "azure",
+            "AI-102": "azure-ai-services",
+            "DP-900": "azure",
+            "DP-203": "azure",
+            "MS-700": "microsoft-teams",
+            "PL-100": "power-platform",
+            "PL-400": "power-platform",
+            "PL-900": "power-platform",
+            "SC-900": "azure",
+        }
+
+        cert_upper = (certification or "").upper().strip()
+        product_filter = AEP_CERT_PRODUCT_MAP.get(cert_upper, "")
+
+        def _search_url(topic: str) -> str:
+            """Construye URL de búsqueda con filtro de producto si está disponible."""
+            terms = quote_plus(topic[:80])
+            base = (
+                f"https://learn.microsoft.com/en-us/training/browse/"
+                f"?terms={terms}"
+            )
+            return f"{base}&products={product_filter}" if product_filter else base
+
+        if not sessions:
+            return sessions
+
+        if _httpx is None:
+            for s in sessions:
+                topic = s.get("topic", "")
+                s["learn_url"] = _search_url(topic) if topic else ""
+            return sessions
+
+        # --- Obtener catálogo de módulos vía API real ---
+        catalog_url = (
+            "https://learn.microsoft.com/api/catalog/"
+            "?type=modules&locale=en-us"
+        )
+        modules: list = []
+        try:
+            with _httpx.Client(timeout=15.0, follow_redirects=True) as client:
+                resp = client.get(catalog_url)
+                resp.raise_for_status()
+                modules = resp.json().get("modules", [])
+        except Exception:
+            pass
+
+        # Pre-filtrar por certificación cuando sea posible para acelerar búsqueda
+        cert_modules = (
+            [
+                m for m in modules
+                if cert_upper in m.get("uid", "").upper()
+                or cert_upper in " ".join(m.get("products", [])).upper()
+                or cert_upper in m.get("title", "").upper()
+            ]
+            if cert_upper
+            else []
+        )
+        # Si hay poco resultado de cert, ampliar con filtro de producto
+        if len(cert_modules) < 5 and product_filter:
+            cert_modules = [
+                m for m in modules
+                if product_filter in " ".join(m.get("products", [])).lower()
+            ]
+        search_pool = cert_modules if len(cert_modules) >= 3 else modules
+
+        def _score(module: dict, tokens: list[str]) -> int:
+            """Puntúa un módulo basándose en coincidencias de tokens."""
+            text = (
+                module.get("title", "") + " " + module.get("summary", "")
+            ).lower()
+            return sum(1 for t in tokens if t in text)
+
+        def _normalize_url(url: str) -> str:
+            if not url:
+                return ""
+            if url.startswith("/"):
+                return f"https://learn.microsoft.com{url}"
+            return url
+
+        for session in sessions:
+            topic: str = session.get("topic", "")
+            if not topic:
+                continue
+
+            # Tokens de búsqueda: palabras de más de 3 caracteres
+            tokens = [t for t in topic.lower().split() if len(t) > 3]
+
+            best_module = None
+            best_score = 0
+            for module in search_pool:
+                score = _score(module, tokens)
+                if score > best_score:
+                    best_score = score
+                    best_module = module
+
+            # Exigir al menos 3 tokens coincidentes para evitar falsos positivos;
+            # si no se alcanza, la URL de búsqueda oficial es mejor que un módulo incorrecto
+            if best_module and best_score >= 3:
+                raw_url = _normalize_url(best_module.get("url", ""))
+                session["learn_url"] = raw_url or _search_url(topic)
+            else:
+                session["learn_url"] = _search_url(topic)
+
+        return sessions
 
     def _execute_assessment_questionnaire(
         self,
@@ -1157,6 +1298,12 @@ class OrchestratorAgent:
                             certification=chosen,
                             study_plan_response=result.get('response', ''),
                             plan_name=f"{chosen} · {datetime.now().strftime('%d/%m/%Y')}",
+                        )
+                        structured_plan['sessions'] = (
+                            OrchestratorAgent._enrich_sessions_with_learn_urls(
+                                structured_plan.get('sessions', []),
+                                chosen,
+                            )
                         )
                         persistence_tool.save_study_plan(
                             plan_id,
@@ -1664,6 +1811,12 @@ class OrchestratorAgent:
                             study_plan_response=result.get(
                                 'sp_response', result.get('response', '')),
                             plan_name=f"{chosen_cert} · {datetime.now().strftime('%d/%m/%Y')}",
+                        )
+                        structured_plan['sessions'] = (
+                            OrchestratorAgent._enrich_sessions_with_learn_urls(
+                                structured_plan.get('sessions', []),
+                                chosen_cert,
+                            )
                         )
                         persistence_tool.save_student_profile(student_id, {
                             'student_id': student_id,

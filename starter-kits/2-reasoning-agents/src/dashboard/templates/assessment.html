@@ -360,7 +360,16 @@
         const select = document.getElementById('plan-select');
         const help = document.getElementById('plan-select-help');
         try {
-            const r = await fetch('/api/study-plans/' + CURRENT_STUDENT_ID);
+            const targetStudentId = CURRENT_STUDENT_ID && CURRENT_STUDENT_ID.trim()
+                ? CURRENT_STUDENT_ID.trim()
+                : 'demo_student';
+            const r = await fetch('/api/study-plans/' + targetStudentId);
+
+            const contentType = r.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error('Respuesta no JSON del servidor');
+            }
+
             const data = await r.json();
             const plans = (r.ok && data.success) ? (data.plans || []) : [];
 

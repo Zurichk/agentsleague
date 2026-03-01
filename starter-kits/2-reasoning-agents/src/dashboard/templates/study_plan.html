@@ -220,6 +220,32 @@
     .task-complete {
         margin-right: 8px;
     }
+
+    .learn-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 4px;
+        margin-left: 28px;
+        font-size: 0.78rem;
+        color: #0078d4;
+        text-decoration: none;
+        background: #f0f8ff;
+        border: 1px solid #b3d9f7;
+        border-radius: 4px;
+        padding: 2px 8px;
+        transition: background 0.15s;
+    }
+
+    .learn-link:hover {
+        background: #daf0ff;
+        text-decoration: none;
+        color: #005a9e;
+    }
+
+    .learn-link::before {
+        content: '\1F4D6';
+    }
 </style>
 {% endblock %}
 
@@ -332,14 +358,19 @@
             const weekTitle = topics.length > 0 ? topics[0] : `Módulo Semana ${week.week_number}`;
             const weekDesc = topics.length > 1 ? topics.slice(1).join(' · ') : `${week.start_date} – ${week.end_date}`;
             const taskItems = sessions.map(s => {
-                const check = s.completed ? '✅ ' : '';
+                const check = s.completed ? '\u2705 ' : '';
                 const dur = s.duration_min ? ` (${s.duration_min}min)` : '';
                 const sid = s.session_id || '';
                 const checked = s.completed ? 'checked' : '';
+                // Mostrar enlace solo cuando la URL apunta a un módulo directo,
+                // no al fallback de búsqueda (/training/browse/)
+                const learnLink = (s.learn_url && s.learn_url.includes('/training/modules/'))
+                    ? `<br><a class="learn-link" href="${s.learn_url}" target="_blank" rel="noopener">Ver en Microsoft Learn</a>`
+                    : '';
                 return `<li>
                     <input class="task-complete" type="checkbox" ${checked}
                         onchange="toggleSessionCompleted('${sid}', this.checked)" />
-                    ${check}${s.topic}${dur}
+                    ${check}${s.topic}${dur}${learnLink}
                 </li>`;
             }).join('');
 

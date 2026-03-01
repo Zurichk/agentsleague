@@ -28,7 +28,23 @@
   .chat-header {
     background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
     color: white;
-    padding: 16px 20px
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px
+  }
+
+  .chat-header-text h1 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 3px 0
+  }
+
+  .chat-header-text p {
+    margin: 0;
+    opacity: .85;
+    font-size: .82rem
   }
 
   .chat-header h1 {
@@ -41,6 +57,61 @@
     margin: 0;
     opacity: .85;
     font-size: .82rem
+  }
+
+  .chat-export-bar {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    align-items: center;
+    flex-wrap: wrap
+  }
+
+  .btn-chat-export {
+    background: rgba(255, 255, 255, .18);
+    border: 1px solid rgba(255, 255, 255, .4);
+    color: white;
+    padding: 5px 11px;
+    border-radius: 20px;
+    font-size: .76rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s
+  }
+
+  .btn-chat-export:hover {
+    background: rgba(255, 255, 255, .32)
+  }
+
+  @media print {
+
+    .chat-layout>div:last-child,
+    .chat-footer,
+    .chat-export-bar,
+    .active-agent-bar,
+    #typing-indicator,
+    .assess-overlay,
+    nav,
+    header,
+    footer {
+      display: none !important
+    }
+
+    .chat-panel {
+      border: none !important;
+      box-shadow: none !important
+    }
+
+    .chat-messages {
+      height: auto !important;
+      overflow: visible !important
+    }
+
+    .chat-header {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact
+    }
   }
 
   .chat-messages {
@@ -717,8 +788,22 @@
   <!-- Chat Panel -->
   <div class="chat-panel">
     <div class="chat-header">
-      <h1>&#x1F4AC; Chat con el Sistema Multi-Agente</h1>
-      <p>AEP CertMaster &#xB7; Orchestrator + 6 Agentes Especializados &#xB7; Azure OpenAI</p>
+      <div class="chat-header-text">
+        <h1>&#x1F4AC; Chat con el Sistema Multi-Agente</h1>
+        <p>AEP CertMaster &#xB7; Orchestrator + 6 Agentes Especializados &#xB7; Azure OpenAI</p>
+      </div>
+      <div class="chat-export-bar">
+        <button class="btn-chat-export" onclick="exportChatJSON()" title="Descargar historial en JSON">
+          &#x2B07;&#xFE0F; JSON
+        </button>
+        <button class="btn-chat-export" onclick="exportChatPDF()" title="Imprimir / Guardar como PDF">
+          &#x1F4C4; PDF
+        </button>
+        <label class="btn-chat-export" title="Importar historial desde JSON" style="cursor:pointer;">
+          &#x1F4C2; Importar
+          <input type="file" accept=".json,application/json" style="display:none" onchange="importChatJSON(this)">
+        </label>
+      </div>
     </div>
     <div class="active-agent-bar" id="active-agent-bar">
       <div class="active-pulse"></div>
@@ -888,7 +973,10 @@
   const socket = io({ transports: ['websocket', 'polling'] });
   let pendingTimer = null;
   let sessionTokens = 0;
-  const TIMEOUT_MS = 120000; // Assessment puede tardar ~60s en LLM real
+  const TIMEOUT_MS = 120000;
+  // Marca el instante en que el usuario abrió esta página; se usa para exportar
+  // solo los mensajes de la conversación activa (no el historial completo).
+  const CHAT_SESSION_START = new Date().toISOString(); // Assessment puede tardar ~60s en LLM real
 
   function detectAgentKey(name) {
     if (!name) return 'orchestrator';
@@ -1313,5 +1401,87 @@
     refreshMetrics();
     setInterval(refreshMetrics, 12000);
   });
+
+  /* ===== Exportar / Importar historial de chat ===== */
+
+  async function exportChatJSON() {
+    try {
+      const r = await fetch('/api/chat/export-json?since=' + encodeURIComponent(CHAT_SESSION_START));
+      if (!r.ok) throw new Error('El servidor devolvió un error al exportar');
+      const blob = await r.blob();
+      const cd = r.headers.get('Content-Disposition') || '';
+      const fnMatch = cd.match(/filename="([^"]+)"/);
+      const filename = fnMatch ? fnMatch[1] : 'chat_export.json';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Error exportando JSON: ' + e.message);
+    }
+  }
+
+  function exportChatPDF() {
+    window.print();
+  }
+
+  async function importChatJSON(inputEl) {
+    const file = inputEl.files[0];
+    if (!file) return;
+    inputEl.value = '';  // Permitir re-selección del mismo archivo
+
+    let text, data;
+    try {
+      text = await file.text();
+      data = JSON.parse(text);
+    } catch (e) {
+      alert('El archivo no es un JSON válido: ' + e.message);
+      return;
+    }
+
+    if (!data.messages || !Array.isArray(data.messages)) {
+      alert('El archivo no contiene un historial de conversación válido (falta "messages").');
+      return;
+    }
+
+    const count = data.messages.length;
+    if (!confirm(
+      '¿Importar ' + count + ' mensajes desde "' + file.name + '"?\n' +
+      'Los mensajes se añaden al historial actual y aparecerán en el chat.')) return;
+
+    try {
+      const r = await fetch('/api/chat/import-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text,
+      });
+      const result = await r.json();
+      if (!r.ok || !result.success) {
+        throw new Error(result.message || 'Error importando historial');
+      }
+
+      // Renderizar los mensajes importados en la UI
+      data.messages.forEach(function (msg) {
+        if (msg.role === 'user' && msg.content) {
+          addMessage(msg.content, 'user', '', '', null, null, 'imported');
+        } else if (msg.role === 'assistant' && msg.content) {
+          addMessage(
+            msg.content, 'agent',
+            msg.agent_name || 'OrchestratorAgent',
+            msg.phase, null, null, 'imported'
+          );
+        }
+      });
+
+      addActivity('Sistema', 'Historial importado: ' + result.imported_messages + ' msgs');
+      alert('✅ ' + result.imported_messages + ' mensajes importados correctamente.');
+    } catch (e) {
+      alert('Error al importar: ' + e.message);
+    }
+  }
 </script>
 {% endblock %}

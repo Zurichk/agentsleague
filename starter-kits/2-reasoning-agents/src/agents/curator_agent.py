@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from urllib.parse import quote_plus
 from typing import Any, Dict, List
+
+import httpx
 
 from .base_agent import AEPAgent
 from src.tools.certifications import certifications_tool
@@ -85,6 +88,7 @@ class CuratorAgent(AEPAgent):
         learning_paths = await self._search_learning_paths(
             search_query,
             context.student.level,
+            certification=context.student.target_certification,
         )
 
         # 4. Filtrar y puntuar por relevancia
@@ -155,29 +159,45 @@ class CuratorAgent(AEPAgent):
         cert_info: Dict[str, Any],
     ) -> str:
         """
-        Construye una consulta de búsqueda inteligente.
+        Construye una consulta compacta y útil para la herramienta MCP.
+
+        La API de Microsoft Learn no se beneficia de palabras de relleno como
+        "Microsoft Learn learning path:"; en cambio, basta con un listado de
+        términos clave (temas de interés + certificado). Este método también
+        incluye el código de certificación si está presente para filtrar más
+        eficientemente.
 
         Args:
             topics: Temas de interés del estudiante.
-            cert_info: Información de la certificación.
+            cert_info: Información de la certificación, puede incluir
+                "cert_id" y "skills_measured".
 
         Returns:
-            Consulta de búsqueda optimizada.
+            Cadena de búsqueda optimizada para pasar al MCP tool.
         """
-        # Combinar temas del estudiante con skills de la certificación
-        all_topics = topics + cert_info.get("skills_measured", [])
+        terms: list[str] = []
+        # tomar hasta 5 temas únicos
+        for t in topics[:5]:
+            if t and t.lower() not in (x.lower() for x in terms):
+                terms.append(t)
 
-        # Crear consulta natural
-        query_parts = []
-        for topic in all_topics[:5]:  # Limitar a 5 temas principales
-            query_parts.append(f'"{topic}"')
+        # agregar habilidades de la certificación si existen
+        for s in cert_info.get("skills_measured", [])[:5]:
+            if s and s.lower() not in (x.lower() for x in terms):
+                terms.append(s)
 
-        base_query = " OR ".join(query_parts)
-        search_query = f"Microsoft Learn learning path: {base_query}"
+        # añadir el código de certificación explícitamente (AZ-900, MB-800, etc.)
+        cert_id = cert_info.get("cert_id") or cert_info.get("certification")
+        if cert_id and cert_id not in terms:
+            terms.append(cert_id)
+
+        search_query = " ".join(terms).strip()
+        if not search_query:
+            search_query = "Microsoft Learn"
 
         self.log_reasoning(
             "SEARCH_QUERY",
-            f"Construyendo consulta con {len(all_topics)} temas",
+            f"Construyendo consulta con {len(terms)} términos",
             f"Query: {search_query}",
         )
 
@@ -187,6 +207,7 @@ class CuratorAgent(AEPAgent):
         self,
         search_query: str,
         student_level: str,
+        certification: str | None = None,
     ) -> List[AEPLearningPath]:
         """
         Genera rutas de aprendizaje usando Azure OpenAI.
@@ -209,10 +230,19 @@ class CuratorAgent(AEPAgent):
         )
 
         # Primer intento: obtener rutas reales mediante la herramienta MCP
+        def _normalize_url(url: str) -> str:
+            if not url:
+                return url
+            if url.startswith("/"):
+                return f"https://learn.microsoft.com{url}"
+            if url.startswith("http"):
+                return url
+            return f"https://learn.microsoft.com/{url.lstrip(' /')}"
+
         try:
             raw_paths = await mslearn_mcp_tool.search_learning_paths(
                 query=search_query,
-                certification=None,
+                certification=certification,
                 max_results=5,
             )
             if raw_paths:
@@ -227,7 +257,7 @@ class CuratorAgent(AEPAgent):
                             modules.append(
                                 AEPLearningModule(
                                     title=child.get("title", ""),
-                                    url=child.get("url", ""),
+                                    url=_normalize_url(child.get("url", "")),
                                     duration_minutes=int(
                                         child.get("duration_minutes", 0) or 0
                                     ),
@@ -252,6 +282,10 @@ class CuratorAgent(AEPAgent):
                         )
                     )
                 if learning_paths:
+                    learning_paths = await self._validate_learning_paths_urls(
+                        learning_paths,
+                        search_query,
+                    )
                     self.log_reasoning(
                         "SEARCH_COMPLETE",
                         f"Encontradas {len(learning_paths)} rutas reales",
@@ -271,7 +305,9 @@ class CuratorAgent(AEPAgent):
                     "Eres un experto en certificaciones Microsoft y rutas de aprendizaje de Microsoft Learn. "
                     "Usa toda tu capacidad de análisis para priorizar precisión, cobertura temática y relevancia real para el perfil recibido. "
                     "Genera rutas de aprendizaje detalladas y relevantes en formato JSON. "
-                    "Usa URLs reales de Microsoft Learn (https://learn.microsoft.com/training/). (https://learn.microsoft.com/es-es/training/browse/) "
+                    "<<IMPORTANTE>> los valores de \"url\" deben ser vínculos válidos que apunten a "
+                    "https://learn.microsoft.com (idealmente dentro de /training/paths/...). No inventes dominios, subdominios ni extensiones inexistentes. "
+                    "Si no conoces la URL exacta, incluye al menos un enlace real a la página de búsqueda de Learn correspondiente. "
                     "Responde SOLO con JSON válido, sin texto adicional."
                 ),
             },
@@ -345,6 +381,11 @@ class CuratorAgent(AEPAgent):
                     )
                 )
 
+            learning_paths = await self._validate_learning_paths_urls(
+                learning_paths,
+                search_query,
+            )
+
             self.log_reasoning(
                 "SEARCH_COMPLETE",
                 f"Generadas {len(learning_paths)} rutas de aprendizaje",
@@ -359,11 +400,134 @@ class CuratorAgent(AEPAgent):
                     path_id=f"lp-fallback-{uuid.uuid4().hex[:8]}",
                     title=f"Ruta para {search_query[:50]}",
                     description=f"Ruta generada para: {search_query}",
-                    modules=[],
+                    modules=[
+                        AEPLearningModule(
+                            title="Buscar módulos en Microsoft Learn",
+                            url=self._build_learn_search_url(search_query),
+                            duration_minutes=30,
+                            description=(
+                                "Enlace de búsqueda oficial para encontrar "
+                                "módulos válidos."
+                            ),
+                            skills_covered=[],
+                        )
+                    ],
                     estimated_hours=8.0,
                     relevance_score=0.7,
                 )
             ]
+
+    async def _validate_learning_paths_urls(
+        self,
+        learning_paths: List[AEPLearningPath],
+        search_query: str,
+    ) -> List[AEPLearningPath]:
+        """
+        Valida URLs de módulos y reemplaza enlaces inválidos.
+
+        Args:
+            learning_paths: Rutas candidatas.
+            search_query: Consulta de búsqueda original.
+
+        Returns:
+            Lista de rutas con URLs verificadas.
+        """
+        if not learning_paths:
+            return learning_paths
+
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=True,
+        ) as client:
+            for path in learning_paths:
+                for module in path.modules:
+                    module.url = await self._ensure_valid_learn_url(
+                        module.url,
+                        search_query,
+                        client,
+                        module.title,
+                    )
+
+        return learning_paths
+
+    async def _ensure_valid_learn_url(
+        self,
+        url: str,
+        search_query: str,
+        client: httpx.AsyncClient,
+        module_title: str = "",
+    ) -> str:
+        """
+        Devuelve una URL válida de Learn o una búsqueda oficial de fallback.
+
+        Args:
+            url: URL original.
+            search_query: Consulta principal.
+            client: Cliente HTTP reutilizable.
+            module_title: Título del módulo para búsqueda específica.
+
+        Returns:
+            URL verificada o URL de búsqueda en Learn.
+        """
+        normalized = (url or "").strip()
+        if not normalized:
+            return self._build_learn_search_url(module_title or search_query)
+
+        if not normalized.startswith("https://learn.microsoft.com"):
+            return self._build_learn_search_url(module_title or search_query)
+
+        is_valid = await self._is_url_reachable(normalized, client)
+        if is_valid:
+            return normalized
+
+        en_us_variant = normalized.replace("/es-es/", "/en-us/")
+        if en_us_variant != normalized:
+            en_us_valid = await self._is_url_reachable(en_us_variant, client)
+            if en_us_valid:
+                return en_us_variant
+
+        return self._build_learn_search_url(module_title or search_query)
+
+    async def _is_url_reachable(
+        self,
+        url: str,
+        client: httpx.AsyncClient,
+    ) -> bool:
+        """
+        Comprueba si una URL responde con estado válido.
+
+        Args:
+            url: URL a comprobar.
+            client: Cliente HTTP reutilizable.
+
+        Returns:
+            True si responde 2xx/3xx; en otro caso False.
+        """
+        try:
+            response = await client.head(url)
+            status = response.status_code
+            if 200 <= status < 400:
+                return True
+            if status in (403, 405):
+                get_response = await client.get(url)
+                get_status = get_response.status_code
+                return 200 <= get_status < 400
+            return False
+        except httpx.HTTPError:
+            return False
+
+    def _build_learn_search_url(self, query: str) -> str:
+        """
+        Construye URL de búsqueda oficial de Microsoft Learn.
+
+        Args:
+            query: Términos de búsqueda.
+
+        Returns:
+            URL de búsqueda en Learn.
+        """
+        q = quote_plus((query or "microsoft learn").strip())
+        return f"https://learn.microsoft.com/en-us/training/browse/?terms={q}"
 
     def _filter_and_score_paths(
         self,

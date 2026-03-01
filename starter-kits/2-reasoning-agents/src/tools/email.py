@@ -340,6 +340,7 @@ class EmailTool:
 
         await asyncio.sleep(0.1)
         logger.info(f"📧 Email simulado → {recipient}: {subject}")
+        return True
 
 
 # ---- Instancia global del módulo ----

@@ -854,6 +854,7 @@ class OrchestratorAgent:
                     'duration_minutes': hours * 60,
                     'objectives': [],
                     'completed': False,
+                    'learn_url': '',
                 })
                 continue
 
@@ -878,6 +879,7 @@ class OrchestratorAgent:
                     'duration_minutes': 120,
                     'objectives': [],
                     'completed': False,
+                    'learn_url': '',
                 })
 
         weekly_minutes = {}
@@ -2667,6 +2669,109 @@ def get_chat_history():
     return jsonify({'history': history[-20:]})  # Últimos 20
 
 
+@app.route('/api/chat/export-json')
+def export_chat_json():
+    """Exporta el historial completo de conversación como JSON descargable."""
+    student_id = (
+        request.args.get('student_id')
+        or session.get('student_id')
+        or 'demo_student'
+    )
+    if not persistence_tool:
+        return jsonify({'error': 'Persistencia no disponible'}), 503
+
+    since_str = request.args.get('since', '')
+    rows = persistence_tool.get_conversation_history(student_id, limit=2000)
+    rows = list(reversed(rows))
+
+    # Filtrar solo los mensajes de la sesión activa cuando se proporciona 'since'
+    if since_str:
+        try:
+            from datetime import datetime as _dtp
+            # Normalizar: quitar microsegundos extra y 'Z' para comparación simple
+            since_str_clean = since_str.rstrip('Z').split('.')[0]
+            rows = [
+                r for r in rows
+                if (r.get('created_at') or '') >= since_str_clean
+            ]
+        except Exception:
+            pass  # Si falla el filtro, exportar todo igualmente
+
+    messages = [
+        {
+            'role': r['role'],
+            'content': r['content'],
+            'agent_name': r.get('agent_name') or '',
+            'phase': r.get('phase') or '',
+            'created_at': r.get('created_at') or '',
+        }
+        for r in rows
+    ]
+
+    export_data = {
+        'version': '1.0',
+        'student_id': student_id,
+        'exported_at': datetime.now().isoformat(),
+        'message_count': len(messages),
+        'messages': messages,
+    }
+
+    response = jsonify(export_data)
+    response.headers['Content-Disposition'] = (
+        f'attachment; filename="chat_{student_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json"'
+    )
+    return response
+
+
+@app.route('/api/chat/import-json', methods=['POST'])
+def import_chat_json():
+    """Importa un historial de conversación previamente exportado."""
+    if not persistence_tool:
+        return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
+
+    payload = request.get_json(force=True, silent=True)
+    if not payload:
+        return jsonify({'success': False, 'message': 'JSON inválido o vacío'}), 400
+
+    messages = payload.get('messages', [])
+    if not messages:
+        return jsonify({'success': False, 'message': 'No hay mensajes en el archivo'}), 400
+
+    import_student_id = payload.get('student_id') or session.get(
+        'student_id') or 'demo_student'
+    current_user = session.get('student_id')
+
+    # Seguridad: solo importar sobre la propia cuenta o si es admin
+    if (current_user
+            and current_user not in {'demo', 'demo_student'}
+            and import_student_id != current_user
+            and session.get('role') != 'admin'):
+        import_student_id = current_user
+
+    saved = 0
+    for msg in messages:
+        role = msg.get('role', '')
+        content = msg.get('content', '')
+        if not role or not content:
+            continue
+        ok = persistence_tool.save_conversation_message(
+            student_id=import_student_id,
+            role=role,
+            content=content,
+            agent_name=msg.get('agent_name') or None,
+            phase=msg.get('phase') or None,
+        )
+        if ok:
+            saved += 1
+
+    return jsonify({
+        'success': True,
+        'student_id': import_student_id,
+        'imported_messages': saved,
+        'total_in_file': len(messages),
+    })
+
+
 @app.route('/api/logs', methods=['GET', 'DELETE'])
 def get_logs():
     """Obtener logs de interacciones desde la base de datos persistida."""
@@ -3015,11 +3120,46 @@ def api_study_plan(plan_id):
             return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
 
         try:
+            # 1. Intentar cargar por plan_id directo
             plan_data = persistence_tool.load_study_plan(plan_id)
+            resolved_plan_id = plan_id
+
+            # 2. Fallback: buscar por student_id, igual que el GET handler
+            if not plan_data:
+                try:
+                    import sqlite3 as _sq3
+                    with _sq3.connect(persistence_tool.db_path) as _conn3:
+                        _cur3 = _conn3.cursor()
+                        _cur3.execute(
+                            "SELECT plan_data, plan_id FROM study_plans "
+                            "WHERE student_id = ? ORDER BY updated_at DESC LIMIT 1",
+                            (plan_id,)
+                        )
+                        _row3 = _cur3.fetchone()
+                        if _row3:
+                            import json as _json3
+                            plan_data = _json3.loads(_row3[0])
+                            resolved_plan_id = _row3[1]
+                except Exception:
+                    pass
+
             if not plan_data:
                 return jsonify({'success': False, 'message': 'Plan no encontrado'}), 404
 
-            student_id = (plan_data.get('student_id') or '').strip()
+            # Verificar propiedad: solo el propietario o admin puede borrar
+            current_user = session.get('student_id')
+            plan_owner = (plan_data.get('student_id')
+                          or resolved_plan_id).strip()
+            if (current_user
+                    and current_user not in {'demo', 'demo_student'}
+                    and plan_owner != current_user
+                    and session.get('role') != 'admin'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Acceso denegado: no eres el propietario de este plan',
+                }), 403
+
+            student_id = plan_owner or ''
             if not student_id:
                 return jsonify({
                     'success': False,
@@ -3028,7 +3168,7 @@ def api_study_plan(plan_id):
 
             deleted = persistence_tool.delete_study_plans(
                 student_id=student_id,
-                plan_id=plan_id,
+                plan_id=resolved_plan_id,
             )
             if deleted <= 0:
                 return jsonify({'success': False, 'message': 'Plan no encontrado'}), 404
@@ -3036,7 +3176,7 @@ def api_study_plan(plan_id):
                 'success': True,
                 'student_id': student_id,
                 'deleted_plans': deleted,
-                'plan_id': plan_id,
+                'plan_id': resolved_plan_id,
             })
         except Exception as e:
             logger.error(f"Error borrando plan {plan_id}: {e}")
@@ -3059,14 +3199,19 @@ def api_study_plan(plan_id):
                 with _sqlite3.connect(persistence_tool.db_path) as conn:
                     cur = conn.cursor()
                     cur.execute(
-                        "SELECT plan_data FROM study_plans WHERE student_id = ? "
-                        "ORDER BY updated_at DESC LIMIT 1",
+                        "SELECT plan_data, plan_id FROM study_plans "
+                        "WHERE student_id = ? ORDER BY updated_at DESC LIMIT 1",
                         (resolved_id,)
                     )
                     row = cur.fetchone()
                     if row:
                         import json as _json
                         plan_data = _json.loads(row[0])
+                        # Asegurar que el plan_id del JSON coincide con el de la DB
+                        if row[1] and not plan_data.get('plan_id'):
+                            plan_data['plan_id'] = row[1]
+                        elif row[1]:
+                            plan_data['plan_id'] = row[1]
             except Exception:
                 pass
 
@@ -3088,6 +3233,16 @@ def api_study_plan(plan_id):
         if not plan_data:
             return jsonify({'error': 'Plan no encontrado', 'plan_id': plan_id}), 404
 
+        # Seguridad: verificar propiedad del plan
+        current_user = session.get('student_id')
+        plan_owner = plan_data.get('student_id', resolved_id)
+        if (current_user
+                and current_user not in {'demo', 'demo_student'}
+                and plan_owner not in {'demo', 'demo_student'}
+                and plan_owner != current_user
+                and session.get('role') != 'admin'):
+            return jsonify({'error': 'Acceso denegado'}), 403
+
         # Fallback: si el plan existe pero no está estructurado, reconstruirlo.
         if not plan_data.get('sessions') and plan_data.get('study_plan_response'):
             rebuilt = orchestrator_agent._build_structured_study_plan(
@@ -3106,6 +3261,26 @@ def api_study_plan(plan_id):
                     )
                 except Exception:
                     pass
+
+        # Enriquecimiento lazy de learn_url: si el plan tiene sesiones pero ninguna
+        # tiene learn_url, enriquecer ahora y volver a guardar (ocurre una sola vez).
+        sessions_raw = plan_data.get('sessions', [])
+        if sessions_raw and not any(s.get('learn_url') for s in sessions_raw):
+            try:
+                from src.agents.orchestrator_agent import OrchestratorAgent as _OA
+                plan_data['sessions'] = _OA._enrich_sessions_with_learn_urls(
+                    sessions_raw,
+                    plan_data.get('certification', ''),
+                )
+                if persistence_tool:
+                    persistence_tool.save_study_plan(
+                        plan_data.get('plan_id', plan_id),
+                        plan_data.get('student_id', resolved_id),
+                        plan_data,
+                    )
+            except Exception as _ee:
+                logger.warning(
+                    f"No se pudo enriquecer learn_url del plan: {_ee}")
 
         # 4. Obtener info del estudiante
         student_name = resolved_id
@@ -3161,6 +3336,7 @@ def api_study_plan(plan_id):
                 'duration_min': s.get('duration_minutes', 60),
                 'objectives': s.get('objectives', []),
                 'completed': s.get('completed', False),
+                'learn_url': s.get('learn_url', ''),
             })
 
         # Marcar semana actual y pasadas
@@ -3207,6 +3383,7 @@ def api_study_plan(plan_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/study-plans/', defaults={'student_or_plan_id': ''}, methods=['GET'])
 @app.route('/api/study-plans/<student_or_plan_id>', methods=['GET', 'DELETE'])
 def api_study_plans(student_or_plan_id):
     """Lista los planes de estudio del estudiante (multi-certificación)."""
@@ -3214,7 +3391,10 @@ def api_study_plans(student_or_plan_id):
         return jsonify({'success': False, 'message': 'Persistencia no disponible'}), 503
 
     try:
-        resolved_id = student_or_plan_id
+        resolved_id = (student_or_plan_id or '').strip()
+        if not resolved_id:
+            resolved_id = session.get('student_id', 'demo_student')
+
         if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
             resolved_id = session.get('student_id')
 
@@ -3298,6 +3478,18 @@ def study_plan_page(session_id):
     resolved_id = session_id
     if resolved_id in {'demo', 'demo_student'} and session.get('student_id'):
         resolved_id = session.get('student_id')
+
+    # Seguridad: solo el propietario o un admin puede ver el plan de otro usuario
+    current_user = session.get('student_id')
+    if (current_user
+            and current_user not in {'demo', 'demo_student'}
+            and resolved_id not in {'demo', 'demo_student'}
+            and current_user != resolved_id
+            and session.get('role') != 'admin'):
+        return redirect(
+            url_for('study_plan_page', session_id=current_user)
+        )
+
     return render_template('study_plan.html', session_id=resolved_id)
 
 
@@ -3483,7 +3675,11 @@ def assessment_page():
                 chosen_cert = profile.get('chosen_certification', '')
         except Exception:
             pass
-    return render_template('assessment.html', chosen_cert=chosen_cert)
+    return render_template(
+        'assessment.html',
+        chosen_cert=chosen_cert,
+        student_id=student_id,
+    )
 
 
 # Almacén temporal de preguntas generadas, keyed por session_token.
@@ -3845,26 +4041,10 @@ def get_progress_overview():
             'study_trend': study_trend or []
         }
 
-        # Análisis real del Critic Agent con datos reales
-        try:
-            critic_prompt = (
-                f"Analiza el progreso real del estudiante:\n"
-                f"- Progreso global: {overall_progress}%\n"
-                f"- Horas de estudio: {total_study_hours}h\n"
-                f"- Puntuación media: {average_score}%\n"
-                f"- Evaluaciones aprobadas: {certifications_completed}\n"
-                f"- Días activos: {active_days}\n"
-                f"- Módulos débiles: {weakest_topics}\n"
-                f"- Módulos fuertes: {strongest_topics}\n\n"
-                f"Proporciona recomendaciones específicas y accionables para mejorar."
-            )
-            critic_result = orchestrator_agent.agents['critic'].execute(
-                critic_prompt, student_id)
-            data['critic_analysis'] = critic_result['response'] if isinstance(
-                critic_result, dict) else str(critic_result)
-        except Exception as ae:
-            logger.warning(f"Critic Agent no disponible: {ae}")
-            data['critic_analysis'] = f"Progreso: {overall_progress}%. {'¡Buen ritmo!' if overall_progress > 50 else 'Sigue practicando para mejorar.'}"
+        data['critic_analysis'] = (
+            f"Progreso: {overall_progress}%. "
+            f"{'¡Buen ritmo!' if overall_progress > 50 else 'Sigue practicando para mejorar.'}"
+        )
 
         return jsonify({'success': True, 'data': data})
 
@@ -4042,24 +4222,39 @@ def get_progress_insights():
             f"Proporciona consejos de motivación personalizados y un plan de acción de 3 pasos."
         )
 
-        # Assessment Agent → patrones de aprendizaje
-        try:
-            assessment_result = orchestrator_agent.agents['assessment'].execute(
-                context_assessment, student_id)
-            learning_patterns = assessment_result['response'] if isinstance(
-                assessment_result, dict) else str(assessment_result)
-        except Exception as ae:
-            learning_patterns = f"Puntuación media: {avg_score}%. Módulos a reforzar: {', '.join(weak_modules) or 'sin datos'}."
+        run_agents = request.args.get('ai', 'false').lower() == 'true'
 
-        # Engagement Agent → motivación
-        try:
-            engagement_result = orchestrator_agent.agents['engagement'].execute(
-                context_engagement, student_id)
-            motivation_tips = engagement_result['response'] if isinstance(
-                engagement_result, dict) else str(engagement_result)
-        except Exception as ee:
+        if run_agents:
+            # Assessment Agent → patrones de aprendizaje
+            try:
+                assessment_result = orchestrator_agent.agents['assessment'].execute(
+                    context_assessment, student_id)
+                learning_patterns = assessment_result['response'] if isinstance(
+                    assessment_result, dict) else str(assessment_result)
+            except Exception:
+                learning_patterns = (
+                    f"Puntuación media: {avg_score}%. "
+                    f"Módulos a reforzar: {', '.join(weak_modules) or 'sin datos'}."
+                )
+
+            # Engagement Agent → motivación
+            try:
+                engagement_result = orchestrator_agent.agents['engagement'].execute(
+                    context_engagement, student_id)
+                motivation_tips = engagement_result['response'] if isinstance(
+                    engagement_result, dict) else str(engagement_result)
+            except Exception:
+                motivation_tips = (
+                    f"Días activos: {active_days}. Mantén el ritmo de estudio."
+                )
+        else:
+            learning_patterns = (
+                f"Puntuación media: {avg_score}%. "
+                f"Módulos a reforzar: {', '.join(weak_modules) or 'sin datos'}."
+            )
             motivation_tips = (
-                f"Días activos: {active_days}. Mantén el ritmo de estudio."
+                f"Constancia actual: {active_days} días activos. "
+                "Mantén un ritmo estable de estudio."
             )
 
         # Acciones recomendadas basadas en datos reales

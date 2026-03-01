@@ -8,6 +8,7 @@ y lo normaliza al formato interno del sistema.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -17,10 +18,16 @@ from src.utils.logger import setup_logger
 
 logger = setup_logger("tools.certifications")
 
+_EXAM_CODE_PATTERN = re.compile(r"\b[A-Z]{2,5}-\d{2,4}\b")
+
 # URL pública de la API de catálogo de Microsoft Learn
 _CATALOG_API_URL = (
     "https://learn.microsoft.com/api/catalog/"
     "?type=certifications&locale=en-us"
+)
+_EXAMS_API_URL = (
+    "https://learn.microsoft.com/api/catalog/"
+    "?type=exams&locale=en-us"
 )
 
 # Mapeo de niveles de la API al formato interno
@@ -49,6 +56,8 @@ class CertificationsTool:
         """
         self._cache: Optional[List[Dict[str, Any]]] = None
         self._cache_timestamp: float = 0.0
+        self._exams_cache: Optional[List[Dict[str, Any]]] = None
+        self._exams_cache_timestamp: float = 0.0
         self._cache_ttl = cache_ttl_seconds
         logger.info("🏅 CertificationsTool inicializado")
 
@@ -97,12 +106,45 @@ class CertificationsTool:
         cert_id_upper = cert_id.upper()
 
         for cert in all_certs:
-            if cert["cert_id"] == cert_id_upper:
+            aliases = cert.get("aliases", [])
+            if cert["cert_id"] == cert_id_upper or cert_id_upper in aliases:
                 return cert
+
+        for cert in all_certs:
+            cert_name = cert.get("name", "").upper()
+            cert_uid = cert.get("uid", "").upper()
+            if cert_id_upper in cert_name or cert_id_upper in cert_uid:
+                return cert
+
+        all_exams = await self.fetch_all_exams()
+        for exam in all_exams:
+            aliases = exam.get("aliases", [])
+            if exam["cert_id"] == cert_id_upper or cert_id_upper in aliases:
+                return exam
 
         logger.warning(
             f"⚠️ Certificación '{cert_id}' no encontrada en el catálogo oficial")
         return None
+
+    async def fetch_all_exams(self) -> List[Dict[str, Any]]:
+        """
+        Devuelve todos los exámenes oficiales en formato normalizado.
+
+        Returns:
+            Lista de exámenes normalizados.
+        """
+        if (
+            self._exams_cache is not None
+            and (time.monotonic() - self._exams_cache_timestamp) < self._cache_ttl
+        ):
+            return self._exams_cache
+
+        raw_exams = await self._fetch_exams_from_api()
+        normalized_exams = [self._normalize_exam(exam) for exam in raw_exams]
+
+        self._exams_cache = normalized_exams
+        self._exams_cache_timestamp = time.monotonic()
+        return normalized_exams
 
     async def search_certifications(
         self,
@@ -170,6 +212,21 @@ class CertificationsTool:
                 f"❌ Error inesperado al obtener certificaciones: {exc}")
             return []
 
+    async def _fetch_exams_from_api(self) -> List[Dict[str, Any]]:
+        """Realiza la llamada HTTP a la API de exámenes."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(_EXAMS_API_URL)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("exams", [])
+        except httpx.HTTPError as exc:
+            logger.error(f"❌ Error al consultar API de exámenes: {exc}")
+            return []
+        except Exception as exc:
+            logger.error(f"❌ Error inesperado al obtener exámenes: {exc}")
+            return []
+
     def _normalize(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """
         Normaliza una entrada de la API al formato interno del sistema.
@@ -180,11 +237,35 @@ class CertificationsTool:
         # Extraer código de examen (ej. "AZ-900") desde la lista de exámenes
         exam_codes: List[str] = []
         for exam in raw.get("exams", []):
-            code = exam.get("display_name") or exam.get("uid", "")
-            if code:
-                exam_codes.append(code.upper())
+            candidate_values: List[str] = []
+            if isinstance(exam, dict):
+                candidate_values = [
+                    exam.get("display_name", ""),
+                    exam.get("uid", ""),
+                ]
+            elif isinstance(exam, str):
+                candidate_values = [exam]
 
-        cert_id = exam_codes[0] if exam_codes else raw.get(
+            for candidate in candidate_values:
+                matches = _EXAM_CODE_PATTERN.findall(candidate.upper())
+                exam_codes.extend(matches)
+
+        uid = raw.get("uid", "")
+        if uid:
+            exam_codes.extend(_EXAM_CODE_PATTERN.findall(uid.upper()))
+
+        title = raw.get("title", "")
+        if title:
+            exam_codes.extend(_EXAM_CODE_PATTERN.findall(title.upper()))
+
+        unique_codes: List[str] = []
+        seen_codes = set()
+        for code in exam_codes:
+            if code not in seen_codes:
+                seen_codes.add(code)
+                unique_codes.append(code)
+
+        cert_id = unique_codes[0] if unique_codes else raw.get(
             "uid", "UNKNOWN").upper()
 
         # Niveles
@@ -200,6 +281,8 @@ class CertificationsTool:
 
         return {
             "cert_id": cert_id,
+            "aliases": unique_codes,
+            "uid": raw.get("uid", ""),
             "name": raw.get("title", cert_id),
             "description": raw.get("summary", ""),
             "level": level,
@@ -208,6 +291,46 @@ class CertificationsTool:
             "products": products,
             "roles": roles,
             "locale": raw.get("locale", "en-us"),
+        }
+
+    def _normalize_exam(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normaliza una entrada de examen al formato interno.
+        """
+        code_candidates: List[str] = []
+        for field in (
+            raw.get("display_name", ""),
+            raw.get("title", ""),
+            raw.get("uid", ""),
+        ):
+            code_candidates.extend(_EXAM_CODE_PATTERN.findall(field.upper()))
+
+        unique_codes: List[str] = []
+        seen_codes = set()
+        for code in code_candidates:
+            if code not in seen_codes:
+                seen_codes.add(code)
+                unique_codes.append(code)
+
+        cert_id = unique_codes[0] if unique_codes else raw.get(
+            "uid", "UNKNOWN").upper()
+
+        raw_levels: List[str] = raw.get("levels", [])
+        level = _LEVEL_MAP.get(raw_levels[0].lower(
+        ), "intermediate") if raw_levels else "intermediate"
+
+        return {
+            "cert_id": cert_id,
+            "aliases": unique_codes,
+            "uid": raw.get("uid", ""),
+            "name": raw.get("display_name") or raw.get("title", cert_id),
+            "description": raw.get("subtitle", ""),
+            "level": level,
+            "exam_url": raw.get("url", ""),
+            "skills_measured": [],
+            "products": [],
+            "roles": raw.get("roles", []),
+            "locale": "en-us",
         }
 
 

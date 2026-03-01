@@ -18,6 +18,14 @@ logger = setup_logger("tools.mslearn_mcp")
 
 _CATALOG_BASE = "https://learn.microsoft.com/api/catalog/"
 _CACHE_TTL = 1800  # 30 minutos
+_CATALOG_TYPE_MAP: Dict[str, str] = {
+    "learningpaths": "learningPaths",
+    "modules": "modules",
+}
+_CATALOG_RESPONSE_KEYS: Dict[str, str] = {
+    "learningPaths": "learningPaths",
+    "modules": "modules",
+}
 
 
 class MicrosoftLearnMCPTool:
@@ -46,13 +54,15 @@ class MicrosoftLearnMCPTool:
 
         if certification:
             cert_upper = certification.upper()
-            paths = [
+            filtered_paths = [
                 item for item in paths
                 if cert_upper in (item.get("certification_levels") or "").upper()
                 or cert_upper in " ".join(item.get("products", [])).upper()
                 or cert_upper in item.get("uid", "").upper()
                 or cert_upper in item.get("title", "").upper()
             ]
+            if filtered_paths:
+                paths = filtered_paths
 
         if query:
             q_lower = query.lower()
@@ -84,9 +94,40 @@ class MicrosoftLearnMCPTool:
         if not paths:
             return None
 
+        normalized_input = self._normalize_learn_url(path_url)
+
         for item in paths:
-            if item.get("url", "") == path_url or item.get("uid", "") in path_url:
-                return item
+            item_url = self._normalize_learn_url(item.get("url", ""))
+            item_uid = item.get("uid", "")
+            if item_url == normalized_input or item_uid in path_url:
+                module_uids = item.get("modules", [])
+                if not module_uids:
+                    return item
+
+                modules = await self._get_all_modules(language)
+                modules_by_uid = {
+                    module.get("uid", ""): module for module in modules
+                }
+                children: List[Dict[str, Any]] = []
+                for module_uid in module_uids:
+                    module = modules_by_uid.get(module_uid)
+                    if not module:
+                        continue
+                    children.append(
+                        {
+                            "uid": module.get("uid", ""),
+                            "title": module.get("title", ""),
+                            "url": module.get("url", ""),
+                            "duration_minutes": int(
+                                module.get("duration_in_minutes", 0) or 0
+                            ),
+                            "summary": module.get("summary", ""),
+                        }
+                    )
+
+                enriched_item = dict(item)
+                enriched_item["children"] = children
+                return enriched_item
         return None
 
     async def search_modules(
@@ -105,11 +146,13 @@ class MicrosoftLearnMCPTool:
         filtered_modules = modules
         if certification:
             cert_upper = certification.upper()
-            filtered_modules = [
+            cert_filtered_modules = [
                 item for item in filtered_modules
                 if cert_upper in item.get("title", "").upper()
                 or cert_upper in item.get("uid", "").upper()
             ]
+            if cert_filtered_modules:
+                filtered_modules = cert_filtered_modules
 
         if query:
             q_lower = query.lower()
@@ -141,11 +184,13 @@ class MicrosoftLearnMCPTool:
 
         if certification:
             cert_upper = certification.upper()
-            paths = [
+            filtered_paths = [
                 item for item in paths
                 if cert_upper in item.get("title", "").upper()
                 or cert_upper in " ".join(item.get("products", [])).upper()
             ]
+            if filtered_paths:
+                paths = filtered_paths
 
         paths.sort(
             key=lambda item: item.get("number_of_children", 0),
@@ -177,13 +222,15 @@ class MicrosoftLearnMCPTool:
         return raw
 
     async def _fetch_catalog(self, type_: str, language: str) -> List[Dict[str, Any]]:
-        url = f"{_CATALOG_BASE}?type={type_}&locale={language}"
+        api_type = _CATALOG_TYPE_MAP.get(type_, type_)
+        response_key = _CATALOG_RESPONSE_KEYS.get(api_type, api_type)
+        url = f"{_CATALOG_BASE}?type={api_type}&locale={language}"
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 payload = response.json()
-                return payload.get(type_, [])
+                return payload.get(response_key, [])
         except httpx.HTTPError as exc:
             logger.error(f"Error HTTP al obtener catálogo '{type_}': {exc}")
             return []
@@ -191,6 +238,14 @@ class MicrosoftLearnMCPTool:
             logger.error(
                 f"Error inesperado al obtener catálogo '{type_}': {exc}")
             return []
+
+    @staticmethod
+    def _normalize_learn_url(url: str) -> str:
+        if not url:
+            return ""
+
+        no_query = url.split("?", maxsplit=1)[0]
+        return no_query.rstrip("/")
 
 
 mslearn_mcp_tool = MicrosoftLearnMCPTool()
