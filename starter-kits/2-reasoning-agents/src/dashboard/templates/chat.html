@@ -793,6 +793,9 @@
         <p>AEP CertMaster &#xB7; Orchestrator + 6 Agentes Especializados &#xB7; Azure OpenAI</p>
       </div>
       <div class="chat-export-bar">
+        <button class="btn-chat-export" onclick="resetChatSession()" title="Reiniciar conversación y contexto">
+          &#x1F504; Reiniciar
+        </button>
         <button class="btn-chat-export" onclick="exportChatJSON()" title="Descargar historial en JSON">
           &#x2B07;&#xFE0F; JSON
         </button>
@@ -1427,6 +1430,31 @@
 
   function exportChatPDF() {
     window.print();
+  }
+
+  async function resetChatSession() {
+    const confirmed = confirm(
+      '¿Reiniciar el chat actual?\n\n' +
+      'Se limpiará el contexto de la conversación y el historial guardado.'
+    );
+    if (!confirmed) return;
+
+    try {
+      const r = await fetch('/api/chat/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const result = await r.json();
+      if (!r.ok || !result.success) {
+        throw new Error(result.message || 'No se pudo reiniciar el chat');
+      }
+
+      addActivity('Sistema', 'Chat reiniciado');
+      location.reload();
+    } catch (e) {
+      alert('Error reiniciando chat: ' + e.message);
+    }
   }
 
   async function importChatJSON(inputEl) {

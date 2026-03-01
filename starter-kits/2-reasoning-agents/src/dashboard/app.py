@@ -2684,18 +2684,48 @@ def export_chat_json():
     rows = persistence_tool.get_conversation_history(student_id, limit=2000)
     rows = list(reversed(rows))
 
+    def _parse_chat_timestamp(timestamp: str):
+        """Convierte timestamps de UI/SQLite a datetime sin zona horaria."""
+        if not timestamp:
+            return None
+
+        normalized = str(timestamp).strip()
+        if normalized.endswith('Z'):
+            normalized = normalized[:-1] + '+00:00'
+
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is not None:
+                parsed = parsed.replace(tzinfo=None)
+            return parsed
+        except ValueError:
+            pass
+
+        accepted_formats = [
+            '%Y-%m-%d %H:%M:%S.%f',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%dT%H:%M:%S.%f',
+            '%Y-%m-%dT%H:%M:%S',
+        ]
+        for date_format in accepted_formats:
+            try:
+                return datetime.strptime(normalized, date_format)
+            except ValueError:
+                continue
+        return None
+
     # Filtrar solo los mensajes de la sesión activa cuando se proporciona 'since'
     if since_str:
-        try:
-            from datetime import datetime as _dtp
-            # Normalizar: quitar microsegundos extra y 'Z' para comparación simple
-            since_str_clean = since_str.rstrip('Z').split('.')[0]
+        since_dt = _parse_chat_timestamp(since_str)
+        if since_dt is not None:
             rows = [
-                r for r in rows
-                if (r.get('created_at') or '') >= since_str_clean
+                row for row in rows
+                if (
+                    (row_created := _parse_chat_timestamp(row.get('created_at')))
+                    is not None
+                    and row_created >= since_dt
+                )
             ]
-        except Exception:
-            pass  # Si falla el filtro, exportar todo igualmente
 
     messages = [
         {
@@ -2721,6 +2751,53 @@ def export_chat_json():
         f'attachment; filename="chat_{student_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json"'
     )
     return response
+
+
+@app.route('/api/chat/reset', methods=['POST'])
+def reset_chat_session():
+    """Reinicia el chat del estudiante actual y limpia su contexto activo."""
+    payload = request.get_json(silent=True) or {}
+    student_id = (
+        session.get('student_id')
+        or payload.get('student_id')
+        or 'demo_student'
+    )
+
+    deleted_messages = 0
+    if persistence_tool:
+        try:
+            deleted_messages = persistence_tool.delete_conversation_history(
+                student_id
+            )
+        except Exception as error:
+            logger.warning(
+                "No se pudo eliminar historial persistido de %s: %s",
+                student_id,
+                error,
+            )
+
+    cleared_state = False
+    if hasattr(orchestrator_agent, 'conversation_state'):
+        state_store = getattr(orchestrator_agent, 'conversation_state')
+        if isinstance(state_store, dict):
+            state_store.pop(student_id, None)
+            cleared_state = True
+
+    if hasattr(orchestrator_agent, 'interaction_logs'):
+        logs_store = getattr(orchestrator_agent, 'interaction_logs')
+        if isinstance(logs_store, list):
+            orchestrator_agent.interaction_logs = [
+                log
+                for log in logs_store
+                if log.get('student_id') != student_id
+            ]
+
+    return jsonify({
+        'success': True,
+        'student_id': student_id,
+        'deleted_messages': deleted_messages,
+        'cleared_state': cleared_state,
+    })
 
 
 @app.route('/api/chat/import-json', methods=['POST'])
